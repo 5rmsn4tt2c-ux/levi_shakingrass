@@ -1784,7 +1784,11 @@ run(function()
     local CircleObject
     local RightClick
     local ShowTarget
+    local Prediction
+    local TargetLock
+    local HorizOnly
     local moveConst = Vector2.new(1, 0.77) * math.rad(0.5)
+    local lockedEnt = nil
 
     local function wrapAngle(num)
     	num = num % math.pi
@@ -1808,18 +1812,26 @@ run(function()
     				end
 
     				if rightClicked and not vape.gui.ScaledGui.ClickGui.Visible then
-    					ent = entitylib.EntityMouse({
-    						Range = FOV.Value,
-    						Part = Part.Value,
-    						Players = Targets.Players.Enabled,
-    						NPCs = Targets.NPCs.Enabled,
-    						Wallcheck = Targets.Walls.Enabled,
-    						Origin = gameCamera.CFrame.Position,
-    					})
+    					local candidate = TargetLock.Enabled and lockedEnt and entitylib.isAlive and entitylib.isAlive(lockedEnt) and lockedEnt or nil
+    					if not candidate then
+    						candidate = entitylib.EntityMouse({
+    							Range = FOV.Value,
+    							Part = Part.Value,
+    							Players = Targets.Players.Enabled,
+    							NPCs = Targets.NPCs.Enabled,
+    							Wallcheck = Targets.Walls.Enabled,
+    							Origin = gameCamera.CFrame.Position,
+    						})
+    					end
+    					ent = candidate
+    					lockedEnt = TargetLock.Enabled and ent or nil
 
     					if ent then
     						local facing = gameCamera.CFrame.LookVector
-    						local new = (ent[Part.Value].Position - gameCamera.CFrame.Position).Unit
+    						local predTime = (Prediction.Value or 0) / 1000
+    						local vel = ent.RootPart and ent.RootPart.AssemblyLinearVelocity or Vector3.zero
+    						local targetPos = ent[Part.Value].Position + vel * predTime
+    						local new = (targetPos - gameCamera.CFrame.Position).Unit
     						new = new == new and new or Vector3.zero
 
     						if ShowTarget.Enabled then
@@ -1828,7 +1840,7 @@ run(function()
 
     						if new ~= Vector3.zero then
     							local diffYaw = wrapAngle(math.atan2(facing.X, facing.Z) - math.atan2(new.X, new.Z))
-    							local diffPitch = math.asin(facing.Y) - math.asin(new.Y)
+    							local diffPitch = HorizOnly.Enabled and 0 or (math.asin(facing.Y) - math.asin(new.Y))
     							local angle = Vector2.new(diffYaw, diffPitch)
     								// (moveConst * UserSettings():GetService('UserGameSettings').MouseSensitivity)
 
@@ -1948,27 +1960,58 @@ run(function()
     ShowTarget = AimAssist:CreateToggle({
     	Name = 'Show target info',
     })
+    Prediction = AimAssist:CreateSlider({
+    	Name = 'Prediction',
+    	Min = 0,
+    	Max = 500,
+    	Default = 0,
+    	Suffix = 'ms',
+    	Tooltip = 'Lead aim ahead of moving targets based on their velocity',
+    })
+    TargetLock = AimAssist:CreateToggle({
+    	Name = 'Target Lock',
+    	Tooltip = 'Stick to the first target found instead of re-evaluating each frame',
+    	Function = function()
+    		lockedEnt = nil
+    	end,
+    })
+    HorizOnly = AimAssist:CreateToggle({
+    	Name = 'Horizontal Only',
+    	Tooltip = 'Only adjusts horizontal aim — less obvious vertical snapping',
+    })
 end)
 
 run(function()
     local AutoClicker
     local Mode
     local CPS
+    local HoldActivate
+    local BurstCount
 
     AutoClicker = vape.Categories.Combat:CreateModule({
     	Name = 'Auto Clicker',
     	Function = function(callback)
     		if callback then
     			repeat
-    				if Mode.Value == 'Tool' then
-    					local tool = getTool()
-    					if tool and inputService:IsMouseButtonPressed(0) then
-    						tool:Activate()
-    					end
-    				else
-    					if mouse1click and (isrbxactive or iswindowactive)() then
-    						if not vape.gui.ScaledGui.ClickGui.Visible then
-    							(Mode.Value == 'Click' and mouse1click or mouse2click)()
+    				local shouldFire = not HoldActivate.Enabled or inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+    				if shouldFire then
+    					if Mode.Value == 'Tool' then
+    						local tool = getTool()
+    						if tool and inputService:IsMouseButtonPressed(0) then
+    							for _ = 1, BurstCount.Value do
+    								tool:Activate()
+    								if BurstCount.Value > 1 then task.wait(0.03) end
+    							end
+    						end
+    					else
+    						if mouse1click and (isrbxactive or iswindowactive)() then
+    							if not vape.gui.ScaledGui.ClickGui.Visible then
+    								local clickFn = Mode.Value == 'Click' and mouse1click or mouse2click
+    								for _ = 1, BurstCount.Value do
+    									clickFn()
+    									if BurstCount.Value > 1 then task.wait(0.03) end
+    								end
+    							end
     						end
     					end
     				end
@@ -1987,9 +2030,20 @@ run(function()
     CPS = AutoClicker:CreateTwoSlider({
     	Name = 'CPS',
     	Min = 1,
-    	Max = 20,
+    	Max = 30,
     	DefaultMin = 8,
     	DefaultMax = 12,
+    })
+    HoldActivate = AutoClicker:CreateToggle({
+    	Name = 'Hold to activate',
+    	Tooltip = 'Only clicks while you are holding left mouse button',
+    })
+    BurstCount = AutoClicker:CreateSlider({
+    	Name = 'Burst count',
+    	Min = 1,
+    	Max = 5,
+    	Default = 1,
+    	Tooltip = 'Number of clicks fired per interval (burst clicking)',
     })
 end)
 
@@ -1999,6 +2053,8 @@ run(function()
     local Mode
     local Value
     local Chance
+    local VertBoost
+    local HitInterval
     local Overlay = OverlapParams.new()
     Overlay.FilterType = Enum.RaycastFilterType.Include
     local modified = {}
@@ -2026,15 +2082,16 @@ run(function()
     						end
 
     						Overlay.FilterDescendantsInstances = entites
+    						local vertExtra = VertBoost.Enabled and Value.Value or 0
     						local parts = workspace:GetPartBoundsInBox(
     							tool.Parent.CFrame * CFrame.new(0, 0, Value.Value / 2),
-    							tool.Parent.Size + Vector3.new(0, 0, Value.Value),
+    							tool.Parent.Size + Vector3.new(0, vertExtra, Value.Value),
     							Overlay
     						)
 
     						for _, v in parts do
     							if Random.new().NextNumber(Random.new(), 0, 100) > Chance.Value then
-    								task.wait(0.2)
+    								task.wait(HitInterval.Value)
     								break
     							end
 
@@ -2074,7 +2131,7 @@ run(function()
     Value = Reach:CreateSlider({
     	Name = 'Range',
     	Min = 0,
-    	Max = 2,
+    	Max = 4,
     	Decimal = 10,
     	Suffix = function(val)
     		return val == 1 and 'stud' or 'studs'
@@ -2086,6 +2143,19 @@ run(function()
     	Max = 100,
     	Default = 100,
     	Suffix = '%',
+    })
+    VertBoost = Reach:CreateToggle({
+    	Name = 'Vertical boost',
+    	Tooltip = 'Also extends hit range vertically — useful against players above or below you',
+    })
+    HitInterval = Reach:CreateSlider({
+    	Name = 'Miss delay',
+    	Min = 0,
+    	Max = 0.5,
+    	Default = 0.2,
+    	Decimal = 10,
+    	Suffix = 's',
+    	Tooltip = 'Delay after a missed hit — lower = faster re-attempt',
     })
 end)
 
@@ -2532,12 +2602,17 @@ run(function()
     local TriggerBot
     local Targets
     local ShootDelay
+    local DelayJitter
     local Distance
+    local TBotFOV
+    local MultiShot
     local rayCheck, delayCheck = RaycastParams.new(), tick()
+    local rand = Random.new()
 
     local function getTriggerBotTarget()
     	rayCheck.FilterDescendantsInstances = { lplr.Character, gameCamera }
 
+    	-- optional FOV gate: check angle between LookVector and target direction
     	local ray = workspace:Raycast(gameCamera.CFrame.Position, gameCamera.CFrame.LookVector * Distance.Value, rayCheck)
     	if ray and ray.Instance then
     		for _, v in entitylib.List do
@@ -2547,6 +2622,14 @@ run(function()
     				and (Targets.Players.Enabled and v.Player or Targets.NPCs.Enabled and v.NPC)
     			then
     				if ray.Instance:IsDescendantOf(v.Character) then
+    					if TBotFOV.Value < 360 then
+    						local root = v.RootPart
+    						if root then
+    							local toTarget = (root.Position - gameCamera.CFrame.Position).Unit
+    							local angle = math.deg(math.acos(math.clamp(gameCamera.CFrame.LookVector:Dot(toTarget), -1, 1)))
+    							if angle > TBotFOV.Value / 2 then return end
+    						end
+    					end
     					return entitylib.isVulnerable(v) and v
     				end
     			end
@@ -2564,7 +2647,18 @@ run(function()
     						if delayCheck < tick() then
     							if mouseClicked then
     								mouse1release()
-    								delayCheck = tick() + ShootDelay.Value
+    								local jitter = DelayJitter.Value > 0 and rand:NextNumber(0, DelayJitter.Value) or 0
+    								delayCheck = tick() + ShootDelay.Value + jitter
+    								if MultiShot.Enabled then
+    									task.spawn(function()
+    										for _ = 1, 2 do
+    											task.wait(0.05)
+    											mouse1press()
+    											task.wait(0.03)
+    											mouse1release()
+    										end
+    									end)
+    								end
     							else
     								mouse1press()
     							end
@@ -2612,6 +2706,27 @@ run(function()
     	Suffix = function(val)
     		return val == 1 and 'stud' or 'studs'
     	end,
+    })
+    DelayJitter = TriggerBot:CreateSlider({
+    	Name = 'Delay jitter',
+    	Min = 0,
+    	Max = 0.5,
+    	Default = 0,
+    	Decimal = 100,
+    	Suffix = 's',
+    	Tooltip = 'Adds random variance to shot delay — makes firing pattern less detectable',
+    })
+    TBotFOV = TriggerBot:CreateSlider({
+    	Name = 'FOV filter',
+    	Min = 1,
+    	Max = 360,
+    	Default = 360,
+    	Suffix = '°',
+    	Tooltip = 'Only fires if target is within this angle from your crosshair center',
+    })
+    MultiShot = TriggerBot:CreateToggle({
+    	Name = 'Multi-shot',
+    	Tooltip = 'Fires two extra clicks after each trigger pull for burst-style weapons',
     })
 end)
 
