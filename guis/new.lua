@@ -279,13 +279,15 @@ local function createDownloader(text)
 	end
 end
 
+local mobileButtonSize = {Value = 40}
+
 local function createMobileButton(buttonapi, position)
 	local heldbutton = false
 	local enabledColor = Color3.fromRGB(50, 160, 255)
 	local disabledColor = Color3.fromRGB(18, 17, 26)
 
 	local button = Instance.new('TextButton')
-	button.Size = UDim2.fromOffset(54, 54)
+	button.Size = UDim2.fromOffset(mobileButtonSize.Value, mobileButtonSize.Value)
 	button.Position = UDim2.fromOffset(position.X, position.Y)
 	button.AnchorPoint = Vector2.new(0.5, 0.5)
 	button.BackgroundColor3 = buttonapi.Enabled and enabledColor or disabledColor
@@ -6403,6 +6405,23 @@ mainapi.RainbowUpdateSpeed = guipane:CreateSlider({
 	Tooltip = 'Adjusts the update rate of rainbow values',
 	Suffix = 'hz'
 })
+if inputService.TouchEnabled then
+	guipane:CreateSlider({
+		Name = 'Button size',
+		Min = 20,
+		Max = 80,
+		Default = 40,
+		Tooltip = 'Size of the shortcut buttons placed on screen',
+		Function = function(val)
+			mobileButtonSize.Value = val
+			for _, mod in mainapi.Modules do
+				if mod.Bind and mod.Bind.Button then
+					mod.Bind.Button.Size = UDim2.fromOffset(val, val)
+				end
+			end
+		end
+	})
+end
 guipane:CreateButton({
 	Name = 'Reset GUI positions',
 	Function = function()
