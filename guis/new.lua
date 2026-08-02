@@ -2549,12 +2549,23 @@ function mainapi:CreateGUI()
 	addCorner(window)
 	makeDraggable(window)
 	local leviIcon = Instance.new('ImageLabel')
-	leviIcon.Name = 'LeviIcon'
 	leviIcon.Size = UDim2.fromOffset(22, 22)
-	leviIcon.Position = UDim2.fromOffset(8, 8)
 	leviIcon.BackgroundTransparency = 1
 	leviIcon.ImageColor3 = Color3.fromRGB(100, 180, 255)
-	leviIcon.Parent = window
+	local logo = Instance.new('TextLabel')
+	logo.Name = 'VapeLogo'
+	logo.Size = UDim2.fromOffset(110, 30)
+	logo.Position = UDim2.fromOffset(34, 4)
+	logo.BackgroundTransparency = 1
+	logo.Text = 'LEVI'
+	logo.TextColor3 = Color3.fromRGB(100, 180, 255)
+	logo.TextSize = 18
+	logo.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+	logo.TextXAlignment = Enum.TextXAlignment.Left
+	logo.Parent = window
+	leviIcon.Name = 'V4Logo'
+	leviIcon.Position = UDim2.fromOffset(-26, 4)
+	leviIcon.Parent = logo
 	task.spawn(function()
 		local iconFile = 'levi_icon.png'
 		if getcustomasset and writefile and isfile then
@@ -2569,17 +2580,6 @@ function mainapi:CreateGUI()
 			end
 		end
 	end)
-	local logo = Instance.new('TextLabel')
-	logo.Name = 'VapeLogo'
-	logo.Size = UDim2.fromOffset(110, 30)
-	logo.Position = UDim2.fromOffset(34, 4)
-	logo.BackgroundTransparency = 1
-	logo.Text = 'LEVI'
-	logo.TextColor3 = Color3.fromRGB(100, 180, 255)
-	logo.TextSize = 18
-	logo.FontFace = Font.fromEnum(Enum.Font.GothamBold)
-	logo.TextXAlignment = Enum.TextXAlignment.Left
-	logo.Parent = window
 	local logoGradient = Instance.new('UIGradient')
 	logoGradient.Color = ColorSequence.new({
 		ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 160, 255)),
