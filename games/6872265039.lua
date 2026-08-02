@@ -4,6 +4,7 @@ local cloneref = cloneref or function(obj) return obj end
 local playersService = cloneref(game:GetService('Players'))
 local replicatedStorage = cloneref(game:GetService('ReplicatedStorage'))
 local inputService = cloneref(game:GetService('UserInputService'))
+local runService = cloneref(game:GetService('RunService'))
 
 local lplr = playersService.LocalPlayer
 local vape = shared.vape
@@ -64,7 +65,8 @@ end
 run(function()
     local Sprint
     local old
-    
+    local SpeedBoost, BunnyHop, WTap
+
     Sprint = vape.Categories.Combat:CreateModule({
         Name = 'Sprint',
         Function = function(callback)
@@ -75,15 +77,99 @@ run(function()
                     bedwars.SprintController:startSprinting()
                     return call
                 end
+
+                Sprint:Clean(runService.Heartbeat:Connect(function()
+                    if SpeedBoost.Value > 0 then
+                        local hum = lplr.Character and lplr.Character:FindFirstChildOfClass('Humanoid')
+                        if hum then hum.WalkSpeed = 16 + SpeedBoost.Value end
+                    end
+                end))
+
+                local function hookChar(char)
+                    local hum = char:WaitForChild('Humanoid', 3)
+                    if not hum then return end
+                    Sprint:Clean(hum.StateChanged:Connect(function(_, new)
+                        if new == Enum.HumanoidStateType.Landed and BunnyHop.Enabled then
+                            task.wait()
+                            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                        end
+                    end))
+                end
+                Sprint:Clean(lplr.CharacterAdded:Connect(hookChar))
+                if lplr.Character then hookChar(lplr.Character) end
+
+                Sprint:Clean(inputService.InputBegan:Connect(function(input, gp)
+                    if gp then return end
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 and WTap.Enabled then
+                        bedwars.SprintController:stopSprinting()
+                        task.delay(0.06, function()
+                            if Sprint.Enabled then bedwars.SprintController:startSprinting() end
+                        end)
+                    end
+                end))
+
                 Sprint:Clean(entitylib.Events.LocalAdded:Connect(function() bedwars.SprintController:stopSprinting() end))
                 bedwars.SprintController:stopSprinting()
             else
                 bedwars.SprintController.stopSprinting = old
                 bedwars.SprintController:stopSprinting()
+                local hum = lplr.Character and lplr.Character:FindFirstChildOfClass('Humanoid')
+                if hum then hum.WalkSpeed = 16 end
             end
         end,
         Tooltip = 'Sets your sprinting to true.'
     })
+
+    SpeedBoost = Sprint:CreateSlider({
+        Name = 'Speed Boost',
+        Min = 0,
+        Max = 8,
+        Default = 0,
+        Suffix = ' ws'
+    })
+    BunnyHop = Sprint:CreateToggle({ Name = 'Bunny Hop', Default = false })
+    WTap = Sprint:CreateToggle({ Name = 'W-Tap', Default = false })
+end)
+
+run(function()
+    local Velocity, KBReduction, HorizOnly, AntiVoid
+
+    Velocity = vape.Categories.Combat:CreateModule({
+        Name = 'Velocity',
+        Function = function(callback)
+            if callback then
+                Velocity:Clean(runService.Heartbeat:Connect(function()
+                    local char = lplr.Character
+                    local root = char and char:FindFirstChild('HumanoidRootPart')
+                    if not root then return end
+                    local vel = root.AssemblyLinearVelocity
+                    if Vector2.new(vel.X, vel.Z).Magnitude < 20 then return end
+                    local factor = 1 - KBReduction.Value / 100
+                    local newVel = Vector3.new(vel.X * factor, vel.Y, vel.Z * factor)
+                    if HorizOnly.Enabled then
+                        newVel = Vector3.new(vel.X * factor, vel.Y, vel.Z * factor)
+                    else
+                        newVel = vel * factor
+                    end
+                    if AntiVoid.Enabled and newVel.Y < -30 then
+                        newVel = Vector3.new(newVel.X, math.max(newVel.Y, -10), newVel.Z)
+                    end
+                    root.AssemblyLinearVelocity = newVel
+                end))
+            end
+        end,
+        Tooltip = 'Reduces knockback taken from hits.'
+    })
+
+    KBReduction = Velocity:CreateSlider({
+        Name = 'KB Reduction',
+        Min = 0,
+        Max = 80,
+        Default = 40,
+        Suffix = '%'
+    })
+    HorizOnly = Velocity:CreateToggle({ Name = 'Horizontal Only', Default = false })
+    AntiVoid = Velocity:CreateToggle({ Name = 'Anti-Void', Default = false })
 end)
 
 --[[
