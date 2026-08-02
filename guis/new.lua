@@ -2547,10 +2547,18 @@ function mainapi:CreateGUI()
 	addBlur(window)
 	addCorner(window)
 	makeDraggable(window)
+	local leviIcon = Instance.new('ImageLabel')
+	leviIcon.Name = 'LeviIcon'
+	leviIcon.Size = UDim2.fromOffset(22, 22)
+	leviIcon.Position = UDim2.fromOffset(8, 8)
+	leviIcon.BackgroundTransparency = 1
+	leviIcon.Image = 'rbxassetid://16871726024'
+	leviIcon.ImageColor3 = Color3.fromRGB(100, 180, 255)
+	leviIcon.Parent = window
 	local logo = Instance.new('TextLabel')
 	logo.Name = 'VapeLogo'
 	logo.Size = UDim2.fromOffset(110, 30)
-	logo.Position = UDim2.fromOffset(8, 4)
+	logo.Position = UDim2.fromOffset(34, 4)
 	logo.BackgroundTransparency = 1
 	logo.Text = 'LEVI'
 	logo.TextColor3 = Color3.fromRGB(100, 180, 255)
