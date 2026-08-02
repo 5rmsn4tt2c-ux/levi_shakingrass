@@ -10052,6 +10052,59 @@ run(function()
         end,
     })
 end)
+run(function()
+	local RecordingMode
+	local AutoHide
+	local manualActive = false
+	local autoActive = false
+
+	local function refresh()
+		vape.gui.Enabled = not (manualActive or autoActive)
+	end
+
+	RecordingMode = vape.Categories.Render:CreateModule({
+		Name = 'Recording Mode',
+		Function = function(callback)
+			manualActive = callback
+			refresh()
+		end,
+		Tooltip = 'Hides all script visuals for clean recordings and screenshots'
+	})
+
+	AutoHide = RecordingMode:CreateToggle({
+		Name = 'Auto-hide on screenshot',
+		Default = true,
+	})
+
+	RecordingMode:Clean(game:GetService('UserInputService').InputBegan:Connect(function(input)
+		if not AutoHide.Enabled then return end
+		if input.KeyCode == Enum.KeyCode.F12 or input.KeyCode == Enum.KeyCode.Print then
+			autoActive = true
+			refresh()
+			task.delay(1.5, function()
+				autoActive = false
+				refresh()
+			end)
+		end
+	end))
+
+	local cg = game:GetService('CoreGui')
+	local function watchChild(v)
+		if not AutoHide.Enabled then return end
+		local n = v.Name:lower()
+		if n:find('screenshot') or n:find('record') or n:find('capture') then
+			autoActive = true
+			refresh()
+			RecordingMode:Clean(v.AncestryChanged:Connect(function()
+				if not v:IsDescendantOf(cg) then
+					autoActive = false
+					refresh()
+				end
+			end))
+		end
+	end
+	RecordingMode:Clean(cg.DescendantAdded:Connect(watchChild))
+end)
 
 
 --[[
