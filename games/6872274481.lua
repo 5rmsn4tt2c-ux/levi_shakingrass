@@ -10057,22 +10057,49 @@ run(function()
 	local AutoHide
 	local manualActive = false
 	local autoActive = false
+	local savedStates = {}
 
-	local function setMobileUI(visible)
+	local function hideAllGui()
 		pcall(function()
-			local mui = lplr.PlayerGui:FindFirstChild('MobileUI')
-			if not mui then return end
-			for _, btn in mui:GetChildren() do
-				btn.Visible = visible
+			local pg = lplr:FindFirstChild('PlayerGui')
+			if not pg then return end
+			savedStates = {}
+			for _, obj in pg:GetChildren() do
+				if obj ~= vape.gui then
+					if obj:IsA('ScreenGui') then
+						savedStates[obj] = obj.Enabled
+						obj.Enabled = false
+					elseif obj:IsA('GuiBase2d') then
+						savedStates[obj] = obj.Visible
+						obj.Visible = false
+					end
+				end
 			end
+		end)
+	end
+
+	local function restoreAllGui()
+		pcall(function()
+			for obj, state in savedStates do
+				if obj and obj.Parent then
+					if obj:IsA('ScreenGui') then
+						obj.Enabled = state
+					elseif obj:IsA('GuiBase2d') then
+						obj.Visible = state
+					end
+				end
+			end
+			savedStates = {}
 		end)
 	end
 
 	local function refresh()
 		local hiding = manualActive or autoActive
 		vape.gui.Enabled = not hiding
-		if inputService.TouchEnabled then
-			setMobileUI(not hiding)
+		if hiding then
+			hideAllGui()
+		else
+			restoreAllGui()
 		end
 	end
 
@@ -10082,7 +10109,7 @@ run(function()
 			manualActive = callback
 			refresh()
 		end,
-		Tooltip = 'Hides all script visuals and mobile buttons for clean recordings and screenshots'
+		Tooltip = 'Hides all visuals including game UI and notifications for clean recordings'
 	})
 
 	AutoHide = RecordingMode:CreateToggle({
