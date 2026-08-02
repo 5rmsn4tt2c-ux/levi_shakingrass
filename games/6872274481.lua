@@ -10206,6 +10206,7 @@ run(function()
     local Range
     local Limit
     local AutoSwitch
+    local TntCount
     
     local function getAttackData()
         if Limit.Enabled then
@@ -10247,7 +10248,10 @@ run(function()
                                         end
                                     end
                                     table.insert(placed, Vector3.new(math.round(v.Position.X), math.round(v.Position.Y), math.round(v.Position.Z)))
-                                    for _, _off in {{Vector3.new(3,0,0), Vector3.new(-3,0,0), Vector3.new(0,0,3), Vector3.new(0,0,-3)}} do
+                                    local _offsets = {Vector3.new(3,0,0), Vector3.new(-3,0,0), Vector3.new(0,0,3), Vector3.new(0,0,-3)}
+                                    for _idx = 1, math.min(TntCount and TntCount.Value or 4, #_offsets) do
+                                        task.spawn(bedwars.placeBlock, v.Position + _offsets[_idx], item.Name)
+                                    end
                                         task.spawn(bedwars.placeBlock, v.Position + _off, item.Name)
                                     end
                                     task.wait(0.12)
@@ -10287,6 +10291,13 @@ run(function()
             Limit.Object.Visible = not callback
         end,
         Default = true
+    })
+    TntCount = AutoCounter:CreateSlider({
+        Name = 'TNT Count',
+        Min = 1,
+        Max = 4,
+        Default = 4,
+        Tooltip = 'How many TNTs to place around the enemy TNT'
     })
 end)
 
@@ -12098,7 +12109,7 @@ run(function()
         joined[plr.UserId] = plr.Name
         if plr == lplr then return end
         if plr.UserId == 5196481 then
-            notif('[!] KING DRACO IN GAME', 'King Draco (5196481) is in this game', 60, 'alert')
+            notif('[!] KING DRACO', 'King Draco is here — leave, you already lost', 60, 'alert')
             staffFunction(plr, 'king_draco_in_game')
             return
         end
