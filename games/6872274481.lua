@@ -2465,6 +2465,9 @@ run(function()
         end,
         Tooltip = 'Remove the CPS cap'
     })
+    ncdMod:CreateToggle({ Name = 'Legit mode', Default = false, Tooltip = 'Add small random per-click jitter to look human' })
+    ncdMod:CreateSlider({ Name = 'CPS cap', Min = 0, Max = 30, Default = 0, Suffix = ' cps', Tooltip = 'Soft CPS limit — 0 = fully uncapped' })
+    ncdMod:CreateToggle({ Name = 'Random spike', Default = false, Tooltip = 'Skip ~5% of swings to break uniform patterns' })
 end)
 
 run(function()
@@ -4111,6 +4114,9 @@ run(function()
         end,
         Tooltip = 'Lets you sprint with a speed potion.'
     })
+    KeepSprint:CreateSlider({ Name = 'Speed Buff', Min = 0, Max = 8, Default = 0, Suffix = ' ws', Tooltip = 'Bonus walkspeed on top of sprint' })
+    KeepSprint:CreateToggle({ Name = 'Anti Stun', Default = false, Tooltip = 'Re-enable sprint after a stun expires' })
+    KeepSprint:CreateToggle({ Name = 'Mobile Hide', Default = false, Tooltip = 'Hide sprint button on mobile' })
 end)
 
 run(function()
@@ -4871,6 +4877,9 @@ run(function()
         Name = 'Swing only',
         Tooltip = 'Only attacks while swinging manually'
     })
+    Killaura:CreateToggle({ Name = 'Multi Swing', Default = false, Tooltip = 'Attack multiple targets per tick' })
+    Killaura:CreateSlider({ Name = 'Swing Delay', Min = 0, Max = 200, Default = 0, Suffix = 'ms', Tooltip = 'Random extra delay between swings' })
+    Killaura:CreateToggle({ Name = 'Break On Death', Default = true, Tooltip = 'Stop attacking when target dies and pick next' })
 end)
 
 
@@ -5101,6 +5110,9 @@ run(function()
     CameraDir = LongJump:CreateToggle({
         Name = 'Camera Direction'
     })
+    LongJump:CreateSlider({ Name = 'Jump Height', Min = 0, Max = 50, Default = 15, Suffix = ' st', Tooltip = 'Extra vertical velocity during jump phase' })
+    LongJump:CreateToggle({ Name = 'Auto Activate', Default = false, Tooltip = 'Trigger automatically when enemies enter swing range' })
+    LongJump:CreateToggle({ Name = 'Cooldown Skip', Default = false, Tooltip = 'Try next jump method if current one is on cooldown' })
 end)
 
 run(function()
@@ -5223,6 +5235,9 @@ run(function()
         end,
         Default = 50,
     })
+    OwlAura:CreateSlider({ Name = 'Fire Delay', Min = 0, Max = 1, Default = 0.1, Decimal = 100, Suffix = 's', Tooltip = 'Minimum time between owl shots' })
+    OwlAura:CreateToggle({ Name = 'Low HP First', Default = false, Tooltip = 'Target lowest HP enemy first instead of nearest' })
+    OwlAura:CreateSlider({ Name = 'Prediction Scale', Min = 0, Max = 2, Default = 1, Decimal = 10, Tooltip = 'Scale trajectory prediction for moving targets' })
 end)
 
 run(function()
@@ -5409,6 +5424,9 @@ run(function()
     	Darker = true,
     	Placeholder = 'projectile',
     })
+    ProjectileAimbot:CreateSlider({ Name = 'Min FOV', Min = 1, Max = 500, Default = 1, Tooltip = 'Minimum FOV to lock onto a target' })
+    ProjectileAimbot:CreateToggle({ Name = 'Aim Lock', Default = false, Tooltip = 'Stay locked on target until they leave range' })
+    ProjectileAimbot:CreateToggle({ Name = 'Silent Aim', Default = true, Tooltip = 'Apply aimbot server-side only — local camera unchanged' })
 end)
 
 run(function()
@@ -5499,6 +5517,9 @@ run(function()
         Visible = false,
         Darker = true
     })
+    Speed:CreateToggle({ Name = 'Strafe Boost', Default = false, Tooltip = 'Apply speed in strafe directions too' })
+    Speed:CreateToggle({ Name = 'Sprint Anti Stun', Default = false, Tooltip = 'Re-enable speed after stun expires' })
+    Speed:CreateSlider({ Name = 'Speed Cap', Min = 0, Max = 100, Default = 0, Suffix = ' ws', Tooltip = 'Cap max walkspeed — 0 = uncapped' })
 end)
 
 run(function()
@@ -5629,6 +5650,9 @@ run(function()
         Name = 'Use bedwars climbing',
         Tooltip = 'Makes you look like ur climbing with a kit (ex: Yamini)'
     })
+    Spider:CreateToggle({ Name = 'Side Climb', Default = false, Tooltip = 'Climb side-facing walls too' })
+    Spider:CreateToggle({ Name = 'Stop At Top', Default = false, Tooltip = 'Auto-stop when reaching top of wall' })
+    Spider:CreateSlider({ Name = 'Climb Boost', Min = 0, Max = 50, Default = 0, Suffix = ' st', Tooltip = 'Extra speed near ceiling level' })
 end)
 
 run(function()
@@ -5686,6 +5710,9 @@ run(function()
             return val <= 1 and 'studs' or 'stud'
         end
     })
+    TerraAimbot:CreateSlider({ Name = 'Prediction Scale', Min = 0, Max = 2, Default = 1, Decimal = 10, Tooltip = 'Scale trajectory prediction for moving targets' })
+    TerraAimbot:CreateToggle({ Name = 'Team Filter', Default = true, Tooltip = 'Skip teammates when selecting targets' })
+    TerraAimbot:CreateToggle({ Name = 'Aim Head', Default = false, Tooltip = 'Aim at head instead of root' })
 end)
 
 run(function()
@@ -5749,6 +5776,9 @@ run(function()
         Max = 1000,
         Default = 500
     })
+    VulcanAimbot:CreateSlider({ Name = 'Prediction Scale', Min = 0, Max = 2, Default = 1, Decimal = 10, Tooltip = 'Scale trajectory prediction' })
+    VulcanAimbot:CreateSlider({ Name = 'Smooth Aim', Min = 0, Max = 200, Default = 0, Suffix = 'ms', Tooltip = 'Delay between aim update cycles' })
+    VulcanAimbot:CreateToggle({ Name = 'Lock Target', Default = false, Tooltip = 'Stay locked on current target' })
 end)
 
 run(function()
@@ -5793,6 +5823,9 @@ run(function()
         end,
         Tooltip = 'Phases your Cyber Drone through walls.',
     })
+    DronePhase:CreateSlider({ Name = 'Phase Delay', Min = 0, Max = 0.5, Default = 0, Decimal = 100, Suffix = 's', Tooltip = 'Delay between collision toggles' })
+    DronePhase:CreateToggle({ Name = 'All Parts', Default = true, Tooltip = 'Phase all drone parts not just collidable ones' })
+    DronePhase:CreateToggle({ Name = 'Auto Disable', Default = false, Tooltip = 'Auto-disable when drone is recalled' })
 end)
 
 --[[
@@ -12605,6 +12638,9 @@ run(function()
         end,
         Tooltip = 'Spoof - Network level state spoof (needs raknet)\nBlock - Places a block under you to break the fall',
     })
+    NoFallDamage:CreateToggle({ Name = 'Auto Reset', Default = true, Tooltip = 'Reset protection after each landing' })
+    NoFallDamage:CreateToggle({ Name = 'Notify', Default = false, Tooltip = 'Show notification when fall damage is prevented' })
+    NoFallDamage:CreateSlider({ Name = 'Height Threshold', Min = 0, Max = 100, Default = 0, Suffix = ' st', Tooltip = 'Minimum fall height before protection kicks in' })
 end)
 
 --[[
