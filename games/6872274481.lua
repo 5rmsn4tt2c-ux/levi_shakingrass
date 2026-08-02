@@ -10058,8 +10058,22 @@ run(function()
 	local manualActive = false
 	local autoActive = false
 
+	local function setMobileUI(visible)
+		pcall(function()
+			local mui = lplr.PlayerGui:FindFirstChild('MobileUI')
+			if not mui then return end
+			for _, btn in mui:GetChildren() do
+				btn.Visible = visible
+			end
+		end)
+	end
+
 	local function refresh()
-		vape.gui.Enabled = not (manualActive or autoActive)
+		local hiding = manualActive or autoActive
+		vape.gui.Enabled = not hiding
+		if inputService.TouchEnabled then
+			setMobileUI(not hiding)
+		end
 	end
 
 	RecordingMode = vape.Categories.Render:CreateModule({
@@ -10068,7 +10082,7 @@ run(function()
 			manualActive = callback
 			refresh()
 		end,
-		Tooltip = 'Hides all script visuals for clean recordings and screenshots'
+		Tooltip = 'Hides all script visuals and mobile buttons for clean recordings and screenshots'
 	})
 
 	AutoHide = RecordingMode:CreateToggle({
