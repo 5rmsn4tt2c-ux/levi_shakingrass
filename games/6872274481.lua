@@ -2241,6 +2241,7 @@ run(function()
     local Mouse
     local ThirdPerson
     local Projectiles
+    local PingComp, TargetLockDur, HeightBias
     
     local function ease(t)
     	return t < 0.5 and 4 * t * t * t or 1 - math.pow(-2 * t + 2, 3) / 2
@@ -2269,7 +2270,8 @@ run(function()
     		return false
     	end
     
-    	if (tick() - started) > 1 or not lasttarget or not lasttarget.Parent or not lasttarget.Humanoid or lasttarget.Humanoid.Health <= 0 then
+    	local lockDur = TargetLockDur and TargetLockDur.Value or 1
+    	if (tick() - started) > lockDur or not lasttarget or not lasttarget.Parent or not lasttarget.Humanoid or lasttarget.Humanoid.Health <= 0 then
     		local ent = entitylib.EntityMouse({
     			Origin = entitylib.character.RootPart.Position,
     			Range = FOV.Value,
@@ -2304,7 +2306,9 @@ run(function()
     				if projmeta and tick() - update < 0.1 and lastent and lastent.RootPart then
     					local meta = projmeta:getProjectileMeta()
     					local gravity = (meta.gravitationalAcceleration or 196.2) * projmeta.gravityMultiplier
-    					local calc = prediction.SolveTrajectory(entitylib.character.RootPart.Position, (meta.launchVelocity or 100) * (1 - lplr:GetNetworkPing()), gravity, lastent.RootPart.Position, lastent.RootPart.Velocity, workspace.Gravity, entitylib.character.HipHeight, nil, rayCheck)
+    					local pingFactor = (PingComp and not PingComp.Enabled) and 1 or (1 - lplr:GetNetworkPing())
+    					local aimTarget = lastent.RootPart.Position + Vector3.new(0, HeightBias and HeightBias.Value or 0, 0)
+    					local calc = prediction.SolveTrajectory(entitylib.character.RootPart.Position, (meta.launchVelocity or 100) * pingFactor, gravity, aimTarget, lastent.RootPart.Velocity, workspace.Gravity, entitylib.character.HipHeight, nil, rayCheck)
     					predicted = calc
     					lastpredicted = tick()
     				else
@@ -2416,18 +2420,55 @@ run(function()
     	Default = { 'fireball', 'telepearl', 'gloop' },
     	Darker = true,
     })
+    PingComp = BowAssist:CreateToggle({
+    	Name = 'Ping compensation',
+    	Default = true,
+    	Tooltip = 'Factor in network latency when predicting projectile trajectory',
+    })
+    TargetLockDur = BowAssist:CreateSlider({
+    	Name = 'Target lock',
+    	Min = 1,
+    	Max = 5,
+    	Default = 1,
+    	Suffix = 's',
+    	Tooltip = 'How long to stick with the same target before re-selecting',
+    })
+    HeightBias = BowAssist:CreateSlider({
+    	Name = 'Height bias',
+    	Min = -2,
+    	Max = 2,
+    	Default = 0,
+    	Decimal = 10,
+    	Suffix = ' st',
+    	Tooltip = 'Shift aim up (positive) or down (negative) to hit head or feet',
+    })
 end)
 
 run(function()
     local old
+    local Legit, CPSCap, RandomSpike
+    local ncdRand = Random.new()
+    local lastNCDSwing = 0
 
-    vape.Categories.Combat:CreateModule({
+    local ncdMod = vape.Categories.Combat:CreateModule({
         Name = 'No Click Delay',
         Function = function(callback)
             if callback then
                 old = bedwars.SwordController.isClickingTooFast
                 bedwars.SwordController.isClickingTooFast = function(self)
-                    self.lastSwing = os.clock()
+                    local now = os.clock()
+                    if CPSCap.Value > 0 then
+                        local minGap = 1 / CPSCap.Value
+                        if (now - lastNCDSwing) < minGap then return true end
+                    end
+                    if Legit.Enabled and (now - lastNCDSwing) < ncdRand:NextNumber(0, 0.05) then
+                        return true
+                    end
+                    if RandomSpike.Enabled and ncdRand:NextNumber() < 0.05 then
+                        return true
+                    end
+                    lastNCDSwing = now
+                    self.lastSwing = now
                     return false
                 end
             else
@@ -2435,6 +2476,24 @@ run(function()
             end
         end,
         Tooltip = 'Remove the CPS cap'
+    })
+    Legit = ncdMod:CreateToggle({
+        Name = 'Legit mode',
+        Default = false,
+        Tooltip = 'Add a small random per-click jitter so click rate looks human',
+    })
+    CPSCap = ncdMod:CreateSlider({
+        Name = 'CPS cap',
+        Min = 0,
+        Max = 30,
+        Default = 0,
+        Suffix = ' cps',
+        Tooltip = 'Soft CPS limit — 0 means fully uncapped',
+    })
+    RandomSpike = ncdMod:CreateToggle({
+        Name = 'Random spike',
+        Default = false,
+        Tooltip = 'Randomly skip ~5%% of swings to break uniform click patterns',
     })
 end)
 
@@ -3130,6 +3189,8 @@ run(function()
     local TargetCheck
     local rand, old = Random.new()
     
+    local AntiVoid, MinStrength, Randomize
+
     Velocity = vape.Categories.Combat:CreateModule({
         Name = 'Velocity',
         Function = function(callback)
@@ -3142,14 +3203,27 @@ run(function()
                         Part = 'RootPart',
                         Players = true
                     })
-    
+
                     if check then
                         knockback = knockback or {}
-                        if Horizontal.Value == 0 and Vertical.Value == 0 then return end
-                        knockback.horizontal = (knockback.horizontal or 1) * (Horizontal.Value / 100)
-                        knockback.vertical = (knockback.vertical or 1) * (Vertical.Value / 100)
+                        local hRaw = knockback.horizontal or 1
+                        if MinStrength.Value > 0 and hRaw < MinStrength.Value then
+                            return old(root, mass, dir, knockback, ...)
+                        end
+                        if Horizontal.Value == 0 and Vertical.Value == 0 and not AntiVoid.Enabled then return end
+                        local hFactor = Horizontal.Value / 100
+                        local vFactor = Vertical.Value / 100
+                        if Randomize.Enabled then
+                            hFactor = math.clamp(hFactor + (rand:NextNumber() - 0.5) * 0.1, 0, 1)
+                            vFactor = math.clamp(vFactor + (rand:NextNumber() - 0.5) * 0.1, 0, 1)
+                        end
+                        knockback.horizontal = hRaw * hFactor
+                        knockback.vertical = (knockback.vertical or 1) * vFactor
+                        if AntiVoid.Enabled then
+                            knockback.vertical = math.min(knockback.vertical or 1, 0.4)
+                        end
                     end
-                    
+
                     return old(root, mass, dir, knockback, ...)
                 end
             else
@@ -3180,6 +3254,22 @@ run(function()
         Suffix = '%'
     })
     TargetCheck = Velocity:CreateToggle({Name = 'Only when targeting'})
+    AntiVoid = Velocity:CreateToggle({
+        Name = 'Anti-Void KB',
+        Tooltip = 'Caps upward knockback so you can\'t be launched into the void'
+    })
+    MinStrength = Velocity:CreateSlider({
+        Name = 'Min strength',
+        Min = 0,
+        Max = 3,
+        Default = 0,
+        Decimal = 10,
+        Tooltip = 'Skip reducing weak hits — looks natural on small bumps'
+    })
+    Randomize = Velocity:CreateToggle({
+        Name = 'Randomize',
+        Tooltip = 'Vary reduction by ±5% each hit to avoid a detectable pattern'
+    })
 end)
 
 run(function()
@@ -3187,8 +3277,10 @@ run(function()
     local Mode
     local Chance
     local TargetCheck
+    local AngleJitter, SpeedScale, VPCooldown
     local rand = Random.new()
     local old = nil
+    local lastVPHit = 0
     
     local function rotateY(v, deg)
     	local r = math.rad(deg)
@@ -3221,7 +3313,18 @@ run(function()
     				end
     				velocity = velocity.Unit
     				local chosen = Mode.Value == 'Random' and ({ 'Left', 'Right', 'Pull' })[rand:NextInteger(1, 3)] or Mode.Value
-    				local rdir = chosen == 'Pull' and -velocity or table.find({'Left', 'Right'}, chosen) and rotateY(velocity, chosen == 'Left' and 90 or 90) or velocity
+    				if VPCooldown.Value > 0 and (tick() - lastVPHit) < VPCooldown.Value then
+    					return old(root, mass, dir, knockback, ...)
+    				end
+    				lastVPHit = tick()
+    				local rdir = chosen == 'Pull' and -velocity or table.find({'Left', 'Right'}, chosen) and rotateY(velocity, chosen == 'Left' and 90 or -90) or velocity
+    				if AngleJitter.Value > 0 then
+    					rdir = rotateY(rdir, rand:NextNumber(-AngleJitter.Value, AngleJitter.Value))
+    				end
+    				if SpeedScale.Value ~= 100 then
+    					knockback = knockback or {}
+    					knockback.horizontal = (knockback.horizontal or 1) * (SpeedScale.Value / 100)
+    				end
     				return old(root, mass, Vector3.new(root.Position.X - rdir.X * 100, dir.Y, root.Position.Z - rdir.Z * 100), knockback, ...)
     			end
     		else
@@ -3249,6 +3352,31 @@ run(function()
     TargetCheck = VelocityPlus:CreateToggle({
     	Name = 'Only when targeting',
     	Tooltip = 'Only redirects knockback when an enemy is within 22 studs',
+    })
+    AngleJitter = VelocityPlus:CreateSlider({
+    	Name = 'Angle Jitter',
+    	Min = 0,
+    	Max = 45,
+    	Default = 0,
+    	Suffix = '°',
+    	Tooltip = 'Randomly vary redirect direction so it\'s harder to read',
+    })
+    SpeedScale = VelocityPlus:CreateSlider({
+    	Name = 'Speed Scale',
+    	Min = 50,
+    	Max = 150,
+    	Default = 100,
+    	Suffix = '%',
+    	Tooltip = 'Scale horizontal knockback force through the redirect',
+    })
+    VPCooldown = VelocityPlus:CreateSlider({
+    	Name = 'Cooldown',
+    	Min = 0,
+    	Max = 2,
+    	Default = 0,
+    	Decimal = 10,
+    	Suffix = 's',
+    	Tooltip = 'Minimum gap between redirects — skip burst knockback',
     })
 end)
 
@@ -26026,6 +26154,7 @@ run(function()
     local Legit
     local SwingOnly
     local Angle
+    local MinMana, BurstCount, WallBypass
     local lastWhimShot = tick()
     local projectileRemote = {InvokeServer = function(self, ...) end}
 
@@ -26047,7 +26176,7 @@ run(function()
                     if tick() < lastWhimShot then continue end
 
                     mana = lplr:GetAttribute('Mana') or 0
-                    if mana < 20 then continue end
+                    if mana < MinMana.Value then continue end
 
                     book = getItem('mage_spellbook') or getItem('magic_stick')
                     if not book then continue end
@@ -26064,7 +26193,7 @@ run(function()
                         Sort = sortmethods[Sort.Value] or sortmethods.Distance,
                     })
 
-                    if ent and not entitylib.Wallcheck(localPosition, ent.RootPart.Position, {gameCamera, lplr.Character, ent.Character}) then
+                    if ent and (WallBypass.Enabled or not entitylib.Wallcheck(localPosition, ent.RootPart.Position, {gameCamera, lplr.Character, ent.Character})) then
                         local delta = (ent.RootPart.Position - localPosition)
                         local flat = delta * Vector3.new(1, 0, 1)
                         local localfacing = (inputService.KeyboardEnabled and gameCamera or entitylib.character.RootPart).CFrame.LookVector * Vector3.new(1, 0, 1)
@@ -26087,7 +26216,9 @@ run(function()
 
                         -- set timer BEFORE firing so it never spams
                         lastWhimShot = tick() + FireRate.Value
+                        local burstTotal = math.max(1, math.floor(BurstCount.Value))
 
+                        for _burst = 1, burstTotal do
                         local projmeta = bedwars.ProjectileMeta[projectile]
                         local projSpeed = projmeta.launchVelocity
                         local gravity = projmeta.gravitationalAcceleration or 196.2
@@ -26139,6 +26270,8 @@ run(function()
                             end
                         end
 
+                        if _burst < burstTotal then task.wait(0.05) end
+                        end -- burst loop
                         task.spawn(function()
                             task.wait(0.3)
                             if oldtool then
@@ -26198,6 +26331,25 @@ run(function()
     Legit = WhimAuto:CreateToggle({
         Name = 'Legit Switch',
         Default = false,
+    })
+    MinMana = WhimAuto:CreateSlider({
+        Name = 'Min Mana',
+        Min = 20,
+        Max = 100,
+        Default = 20,
+        Tooltip = 'Only fire when mana is at or above this value',
+    })
+    BurstCount = WhimAuto:CreateSlider({
+        Name = 'Burst Count',
+        Min = 1,
+        Max = 3,
+        Default = 1,
+        Tooltip = 'Fire this many spells per trigger (costs mana per shot)',
+    })
+    WallBypass = WhimAuto:CreateToggle({
+        Name = 'Wall Bypass',
+        Default = false,
+        Tooltip = 'Fire through walls — skip the line-of-sight check',
     })
 end)
 run(function()
