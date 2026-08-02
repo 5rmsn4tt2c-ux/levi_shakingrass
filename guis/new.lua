@@ -5794,7 +5794,7 @@ function mainapi:Load(skipgui, profile)
 		image.Position = UDim2.fromScale(0.5, 0.5)
 		image.BackgroundTransparency = 1
 		image.ScaleType = Enum.ScaleType.Fit
-		image.ImageColor3 = Color3.fromRGB(190, 225, 255)
+		image.ImageColor3 = Color3.fromRGB(50, 160, 255)
 		image.Image = getcustomasset('levi_shakingrass/assets/new/levibutton.png')
 		image.ImageTransparency = hide and 1 or 0
 		image.Parent = button
