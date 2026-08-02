@@ -10248,10 +10248,10 @@ run(function()
                                         end
                                     end
                                     table.insert(placed, Vector3.new(math.round(v.Position.X), math.round(v.Position.Y), math.round(v.Position.Z)))
-                                    local _offsets = {Vector3.new(3,0,0), Vector3.new(-3,0,0), Vector3.new(0,0,3), Vector3.new(0,0,-3)}
-                                    for _idx = 1, math.min(TntCount and TntCount.Value or 4, #_offsets) do
-                                        task.spawn(bedwars.placeBlock, v.Position + _offsets[_idx], item.Name)
-                                    end
+                                    for _ = 1, TntCount and TntCount.Value or 4 do
+                                        local _angle = math.random() * math.pi * 2
+                                        local _dist = math.random(2, 5)
+                                        local _off = Vector3.new(math.cos(_angle) * _dist, 0, math.sin(_angle) * _dist)
                                         task.spawn(bedwars.placeBlock, v.Position + _off, item.Name)
                                     end
                                     task.wait(0.12)
