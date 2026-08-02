@@ -15,7 +15,7 @@ local function ghGet(url)
 	local res = httpRequest({
 		Url = url,
 		Method = "GET",
-		Headers = { Authorization = "token " .. repo_token, ["User-Agent": "levi" }
+		Headers = { Authorization = "token " .. repo_token, ["User-Agent"] = "levi" }
 	})
 	return res.Body or res.body, res.StatusCode or res.status_code or 0
 end
