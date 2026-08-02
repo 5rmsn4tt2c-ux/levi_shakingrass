@@ -281,29 +281,69 @@ end
 
 local function createMobileButton(buttonapi, position)
 	local heldbutton = false
+	local enabledColor = Color3.fromRGB(50, 160, 255)
+	local disabledColor = Color3.fromRGB(18, 17, 26)
+
 	local button = Instance.new('TextButton')
-	button.Size = UDim2.fromOffset(40, 40)
+	button.Size = UDim2.fromOffset(54, 54)
 	button.Position = UDim2.fromOffset(position.X, position.Y)
 	button.AnchorPoint = Vector2.new(0.5, 0.5)
-	button.BackgroundColor3 = buttonapi.Enabled and Color3.new(0, 0.7, 0) or Color3.new()
-	button.BackgroundTransparency = 0.5
-	button.Text = buttonapi.Name
-	button.TextColor3 = Color3.new(1, 1, 1)
-	button.TextScaled = true
-	button.Font = Enum.Font.Gotham
+	button.BackgroundColor3 = buttonapi.Enabled and enabledColor or disabledColor
+	button.BackgroundTransparency = 0.15
+	button.Text = ''
+	button.AutoButtonColor = false
 	button.Parent = mainapi.gui
-	local buttonconstraint = Instance.new('UITextSizeConstraint')
-	buttonconstraint.MaxTextSize = 16
-	buttonconstraint.Parent = button
 	addCorner(button, UDim.new(1, 0))
+
+	local stroke = Instance.new('UIStroke')
+	stroke.Thickness = 1.5
+	stroke.Color = buttonapi.Enabled and enabledColor or Color3.fromRGB(70, 70, 100)
+	stroke.Transparency = 0.2
+	stroke.Parent = button
+
+	local gradient = Instance.new('UIGradient')
+	gradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 180, 180)),
+	})
+	gradient.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.05),
+		NumberSequenceKeypoint.new(1, 0.25),
+	})
+	gradient.Rotation = 135
+	gradient.Parent = button
+
+	local label = Instance.new('TextLabel')
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Text = buttonapi.Name
+	label.TextColor3 = Color3.fromRGB(230, 235, 255)
+	label.TextScaled = true
+	label.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+	label.TextStrokeTransparency = 0.6
+	label.Parent = button
+	local labelconstraint = Instance.new('UITextSizeConstraint')
+	labelconstraint.MaxTextSize = 13
+	labelconstraint.Parent = label
+
+	local function updateColors(enabled)
+		tweenService:Create(button, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+			BackgroundColor3 = enabled and enabledColor or disabledColor,
+		}):Play()
+		tweenService:Create(stroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+			Color = enabled and enabledColor or Color3.fromRGB(70, 70, 100),
+		}):Play()
+	end
 
 	button.MouseButton1Down:Connect(function()
 		heldbutton = true
+		tweenService:Create(button, TweenInfo.new(0.1), {BackgroundTransparency = 0.4}):Play()
 		local holdtime, holdpos = tick(), inputService:GetMouseLocation()
 		repeat
 			heldbutton = (inputService:GetMouseLocation() - holdpos).Magnitude < 6
 			task.wait()
 		until (tick() - holdtime) > 1 or not heldbutton
+		tweenService:Create(button, TweenInfo.new(0.1), {BackgroundTransparency = 0.15}):Play()
 		if heldbutton then
 			buttonapi.Bind = {}
 			button:Destroy()
@@ -311,10 +351,11 @@ local function createMobileButton(buttonapi, position)
 	end)
 	button.MouseButton1Up:Connect(function()
 		heldbutton = false
+		tweenService:Create(button, TweenInfo.new(0.1), {BackgroundTransparency = 0.15}):Play()
 	end)
 	button.MouseButton1Click:Connect(function()
 		buttonapi:Toggle()
-		button.BackgroundColor3 = buttonapi.Enabled and Color3.new(0, 0.7, 0) or Color3.new()
+		updateColors(buttonapi.Enabled)
 	end)
 
 	buttonapi.Bind = {Button = button}
@@ -5891,11 +5932,10 @@ gui.DisplayOrder = 9999999
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 gui.IgnoreGuiInset = true
 gui.OnTopOfCoreBlur = true
-if false then
-	gui.Parent = cloneref(game:GetService('CoreGui'))--(gethui and gethui()) or cloneref(game:GetService('CoreGui'))
+if gethui then
+	gui.Parent = gethui()
 else
-	gui.Parent = cloneref(game:GetService('Players')).LocalPlayer.PlayerGui
-	gui.ResetOnSpawn = false
+	gui.Parent = cloneref(game:GetService('CoreGui'))
 end
 mainapi.gui = gui
 scaledgui = Instance.new('Frame')
