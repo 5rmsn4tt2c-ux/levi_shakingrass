@@ -5,17 +5,17 @@ local repo = "5rmsn4tt2c-ux/levi_shakingrass"
 local httpRequest = http_request or request or (http and http.request) or (syn and syn.request)
 
 if not httpRequest then
-	return warn("[CatVape] Your executor has no 'request' function.")
+	return warn("[levi] Your executor has no 'request' function.")
 end
 if repo_token == "TOKEN-HERE" or #repo_token < 20 then
-	return warn("[CatVape] Put your GitHub token inside the quotes on the repo_token line.")
+	return warn("[levi] Put your GitHub token inside the quotes on the repo_token line.")
 end
 
 local function ghGet(url)
 	local res = httpRequest({
 		Url = url,
 		Method = "GET",
-		Headers = { Authorization = "token " .. repo_token, ["User-Agent"] = "CatVape" }
+		Headers = { Authorization = "token " .. repo_token, ["User-Agent": "levi" }
 	})
 	return res.Body or res.body, res.StatusCode or res.status_code or 0
 end
@@ -35,7 +35,7 @@ if not getgenv().__repoAuth then
 			return old(self, ...)
 		end))
 	else
-		warn("[CatVape] Executor missing hookmetamethod/newcclosure - needed for private loading.")
+		warn("[levi] Executor missing hookmetamethod/newcclosure - needed for private loading.")
 	end
 end
 
@@ -43,5 +43,5 @@ local body, code = ghGet("https://raw.githubusercontent.com/" .. repo .. "/main/
 if code == 200 then
 	loadstring(body, "init.lua")({})
 else
-	warn("[CatVape] init.lua failed (HTTP " .. code .. "). Check: repo Private, token valid, Contents:Read.")
+	warn("[levi] init.lua failed (HTTP " .. code .. "). Check: repo Private, token valid, Contents:Read.")
 end

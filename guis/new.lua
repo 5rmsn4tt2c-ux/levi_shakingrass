@@ -2,9 +2,9 @@ local license = ... or {}
 local mainapi = {
 	Categories = {},
 	GUIColor = {
-		Hue = 0.46,
-		Sat = 0.96,
-		Value = 0.52
+		Hue = 0.62,
+		Sat = 0.88,
+		Value = 0.95
 	},
 	HeldKeybinds = {},
 	Keybind = {'RightShift'},
@@ -53,10 +53,10 @@ local tween = {
 	tweenstwo = {}
 }
 local uipallet = {
-	Main = Color3.fromRGB(26, 25, 26),
-	Text = Color3.fromRGB(200, 200, 200),
-	Font = Font.fromEnum(Enum.Font.Arial),
-	FontSemiBold = Font.fromEnum(Enum.Font.Arial, Enum.FontWeight.SemiBold),
+	Main = Color3.fromRGB(14, 13, 20),
+	Text = Color3.fromRGB(215, 220, 240),
+	Font = Font.fromEnum(Enum.Font.Gotham),
+	FontSemiBold = Font.fromEnum(Enum.Font.GothamBold),
 	Tween = TweenInfo.new(0.16, Enum.EasingStyle.Linear)
 }
 
@@ -2504,21 +2504,24 @@ function mainapi:CreateGUI()
 	addBlur(window)
 	addCorner(window)
 	makeDraggable(window)
-	local logo = Instance.new('ImageLabel')
+	local logo = Instance.new('TextLabel')
 	logo.Name = 'VapeLogo'
-	logo.Size = UDim2.fromOffset(62, 18)
-	logo.Position = UDim2.fromOffset(11, 10)
+	logo.Size = UDim2.fromOffset(110, 30)
+	logo.Position = UDim2.fromOffset(8, 4)
 	logo.BackgroundTransparency = 1
-	logo.Image = getcustomasset('levi_shakingrass/assets/new/guivape.png')
-	logo.ImageColor3 = select(3, uipallet.Main:ToHSV()) > 0.5 and uipallet.Text or Color3.new(1, 1, 1)
+	logo.Text = 'LEVI'
+	logo.TextColor3 = Color3.fromRGB(100, 180, 255)
+	logo.TextSize = 18
+	logo.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+	logo.TextXAlignment = Enum.TextXAlignment.Left
 	logo.Parent = window
-	local logov4 = Instance.new('ImageLabel')
-	logov4.Name = 'V4Logo'
-	logov4.Size = UDim2.fromOffset(28, 16)
-	logov4.Position = UDim2.new(1, 1, 0, 1)
-	logov4.BackgroundTransparency = 1
-	logov4.Image = getcustomasset('levi_shakingrass/assets/new/guiv4.png')
-	logov4.Parent = logo
+	local logoGradient = Instance.new('UIGradient')
+	logoGradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 160, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(160, 80, 255))
+	})
+	logoGradient.Rotation = 45
+	logoGradient.Parent = logo
 	local children = Instance.new('Frame')
 	children.Name = 'Children'
 	children.Size = UDim2.new(1, 0, 1, -33)
@@ -3592,8 +3595,8 @@ function mainapi:CreateGUI()
 			local body = httpService:JSONEncode({
 				nonce = httpService:GenerateGUID(false),
 				args = {
-					invite = {code = 'catvape'},
-					code = 'catvape'
+					invite = {code = 'levi'},
+					code = 'levi'
 				},
 				cmd = 'INVITE_BROWSER'
 			})
@@ -3615,7 +3618,7 @@ function mainapi:CreateGUI()
 
 		task.spawn(function()
 			tooltip.Text = 'Copied!'
-			setclipboard('https://discord.gg/catvape')
+			setclipboard('https://discord.gg/levi')
 		end)
 	end)
 	settingsbutton.MouseEnter:Connect(function()
@@ -5748,7 +5751,7 @@ function mainapi:Load(skipgui, profile)
 
 		if guipane then
 			guipane:CreateToggle({
-				Name = 'Hide catvape button',
+				Name = 'Hide levi button',
 				Default = hide or false,
 				Function = function(call)
 					button.BackgroundTransparency = call and 1 or 0.35
@@ -5910,7 +5913,7 @@ local scarcitybanner = Instance.new('TextLabel')
 scarcitybanner.Size = UDim2.fromScale(1, 0.02)
 scarcitybanner.Position = UDim2.fromScale(0, 0.97)
 scarcitybanner.BackgroundTransparency = 1
-scarcitybanner.Text = 'Thank you for choosing catvape! join discord.gg/catvape or click the discord button to join.'
+scarcitybanner.Text = 'Welcome to levi_shakingrass. Stay sharp.'
 scarcitybanner.TextScaled = true
 scarcitybanner.TextColor3 = Color3.new(1, 1, 1)
 scarcitybanner.TextStrokeTransparency = 0.5
@@ -6645,7 +6648,7 @@ textguicolorcustom = textgui:CreateColorSlider({
 ]]
 
 local VapeLabels = {}
-local VapeLogo = Instance.new('ImageLabel')
+local VapeLogo = Instance.new('TextLabel')
 VapeLogo.Name = 'Logo'
 VapeLogo.Size = UDim2.fromOffset(80, 21)
 VapeLogo.Position = UDim2.new(1, -142, 0, 3)
@@ -6653,8 +6656,19 @@ VapeLogo.BackgroundTransparency = 1
 VapeLogo.BorderSizePixel = 0
 VapeLogo.Visible = false
 VapeLogo.BackgroundColor3 = Color3.new()
-VapeLogo.Image = getcustomasset('levi_shakingrass/assets/new/textvape.png')
+VapeLogo.Text = 'LEVI'
+VapeLogo.TextColor3 = Color3.fromRGB(100, 180, 255)
+VapeLogo.TextSize = 14
+VapeLogo.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+VapeLogo.TextXAlignment = Enum.TextXAlignment.Left
 VapeLogo.Parent = textgui.Children
+local VapeLogoGrad = Instance.new('UIGradient')
+VapeLogoGrad.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 160, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(160, 80, 255))
+})
+VapeLogoGrad.Rotation = 45
+VapeLogoGrad.Parent = VapeLogo
 
 local lastside = textgui.Children.AbsolutePosition.X > (gui.AbsoluteSize.X / 2)
 mainapi:Clean(textgui.Children:GetPropertyChangedSignal('AbsolutePosition'):Connect(function()
@@ -6668,30 +6682,20 @@ mainapi:Clean(textgui.Children:GetPropertyChangedSignal('AbsolutePosition'):Conn
 	end
 end))
 
-local VapeLogoV4 = Instance.new('ImageLabel')
+local VapeLogoV4 = Instance.new('TextLabel')
 VapeLogoV4.Name = 'Logo2'
-VapeLogoV4.Size = UDim2.fromOffset(33, 18)
-VapeLogoV4.Position = UDim2.new(1, 1, 0, 1)
-VapeLogoV4.BackgroundColor3 = Color3.new()
+VapeLogoV4.Size = UDim2.fromOffset(0, 0)
 VapeLogoV4.BackgroundTransparency = 1
-VapeLogoV4.BorderSizePixel = 0
-VapeLogoV4.Image = getcustomasset('levi_shakingrass/assets/new/textv4.png')
+VapeLogoV4.Text = ''
 VapeLogoV4.Parent = VapeLogo
-local VapeLogoShadow = VapeLogo:Clone()
-VapeLogoShadow.Position = UDim2.fromOffset(1, 1)
-VapeLogoShadow.ZIndex = 0
-VapeLogoShadow.Visible = true
-VapeLogoShadow.ImageColor3 = Color3.new()
-VapeLogoShadow.ImageTransparency = 0.65
-VapeLogoShadow.Parent = VapeLogo
-VapeLogoShadow.Logo2.ZIndex = 0
-VapeLogoShadow.Logo2.ImageColor3 = Color3.new()
-VapeLogoShadow.Logo2.ImageTransparency = 0.65
 local VapeLogoGradient = Instance.new('UIGradient')
-VapeLogoGradient.Rotation = 90
+VapeLogoGradient.Rotation = 45
+VapeLogoGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 160, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(160, 80, 255))
+})
 VapeLogoGradient.Parent = VapeLogo
 local VapeLogoGradient2 = Instance.new('UIGradient')
-VapeLogoGradient2.Rotation = 90
 VapeLogoGradient2.Parent = VapeLogoV4
 local VapeLabelCustom = Instance.new('TextLabel')
 VapeLabelCustom.Position = UDim2.fromOffset(5, 2)
