@@ -1,5 +1,5 @@
 script_key = "KEY-HERE"
-repo_token = "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"   -- keep the quotes, new github_pat_ token INSIDE them
+repo_token = "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"   -- keep the quotes, new github_pat_ token INSIDE them
 
 local repo = "5rmsn4tt2c-ux/levi_shakingrass"
 local httpRequest = http_request or request or (http and http.request) or (syn and syn.request)
