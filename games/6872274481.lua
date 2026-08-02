@@ -3834,6 +3834,28 @@ run(function()
     	Tooltip = 'Dodges projectiles',
     	Default = true,
     })
+    AutoDodge:CreateSlider({
+    	Name = 'Dodge Cooldown',
+    	Min = 0,
+    	Max = 2,
+    	Default = 0,
+    	Decimal = 100,
+    	Suffix = 'seconds',
+    	Tooltip = 'Minimum time between successive dodge triggers',
+    })
+    AutoDodge:CreateToggle({
+    	Name = 'Auto Revert',
+    	Default = false,
+    	Tooltip = 'Automatically revert position when no enemies are nearby',
+    })
+    AutoDodge:CreateSlider({
+    	Name = 'Health Threshold',
+    	Min = 0,
+    	Max = 100,
+    	Default = 100,
+    	Suffix = '%',
+    	Tooltip = 'Only dodge when HP is below this percentage',
+    })
 end)
 
 run(function()
@@ -3985,6 +4007,25 @@ run(function()
     	end,
         Darker = true
     })
+    AutoKaida:CreateSlider({
+        Name = 'Cooldown',
+        Min = 0,
+        Max = 0.5,
+        Default = 0,
+        Decimal = 100,
+        Suffix = 'seconds',
+        Tooltip = 'Minimum delay between successive attacks',
+    })
+    AutoKaida:CreateToggle({
+        Name = 'AutoCharge',
+        Default = false,
+        Tooltip = 'Automatically use ability when mana allows, regardless of Swing during ability setting',
+    })
+    AutoKaida:CreateToggle({
+        Name = 'FaceTarget',
+        Default = false,
+        Tooltip = 'Snap camera toward target before each attack',
+    })
 end)
 
 run(function()
@@ -4009,6 +4050,27 @@ run(function()
     		end
     	end,
         Tooltip = 'Makes you go slightly faster when damaged'
+    })
+    DamageBoost:CreateSlider({
+    	Name = 'Boost Scale',
+    	Min = 50,
+    	Max = 200,
+    	Default = 100,
+    	Suffix = '%',
+    	Tooltip = 'Scale the knockback boost amount (100% = default)',
+    })
+    DamageBoost:CreateSlider({
+    	Name = 'Health Gate',
+    	Min = 0,
+    	Max = 100,
+    	Default = 100,
+    	Suffix = '%',
+    	Tooltip = 'Only activate boost when HP is below this percentage',
+    })
+    DamageBoost:CreateToggle({
+    	Name = 'Notify',
+    	Default = false,
+    	Tooltip = 'Show a notification each time the boost activates',
     })
 end)
 
@@ -4094,6 +4156,24 @@ run(function()
     			end
     		end
     	end,
+    })
+    FastBreak:CreateToggle({
+    	Name = 'Auto Break',
+    	Default = false,
+    	Tooltip = 'Automatically break the currently targeted block',
+    })
+    FastBreak:CreateSlider({
+    	Name = 'Break Chance',
+    	Min = 0,
+    	Max = 100,
+    	Default = 100,
+    	Suffix = '%',
+    	Tooltip = 'Randomly skip speed boost at this rate to look more legitimate',
+    })
+    FastBreak:CreateToggle({
+    	Name = 'Notify Bed',
+    	Default = false,
+    	Tooltip = 'Show an alert when you break a bed block',
     })
 end)
 
@@ -4242,6 +4322,21 @@ run(function()
         Name = 'TP Down',
         Default = true
     })
+    Fly:CreateToggle({
+        Name = 'Noclip',
+        Default = false,
+        Tooltip = 'Disable character collision while flying to pass through blocks',
+    })
+    Fly:CreateToggle({
+        Name = 'Glide Mode',
+        Default = false,
+        Tooltip = 'Reduce vertical gravity for a smooth glide effect',
+    })
+    Fly:CreateToggle({
+        Name = 'InvisiFly',
+        Default = false,
+        Tooltip = 'Periodically teleport back to reduce server-side flight detection',
+    })
 end)
 
 run(function()
@@ -4330,6 +4425,21 @@ run(function()
             return val == 1 and 'stud' or 'studs'
         end
     })
+    HitBoxes:CreateToggle({
+        Name = 'Team Check',
+        Default = false,
+        Tooltip = 'Skip teammates when expanding hitboxes',
+    })
+    HitBoxes:CreateToggle({
+        Name = 'Random Expand',
+        Default = false,
+        Tooltip = 'Randomize expand amount by up to 2 studs each hit to avoid detection patterns',
+    })
+    HitBoxes:CreateToggle({
+        Name = 'Expand On Hit',
+        Default = false,
+        Tooltip = 'Only expand hitbox when you land a successful hit',
+    })
 end)
 
 
@@ -4378,6 +4488,26 @@ run(function()
             end
         end,
         Tooltip = 'Expands enemy Head hitbox to cover the whole body — projectile hits anywhere register as head hits'
+    })
+    HeadHit:CreateSlider({
+        Name = 'Expand Size',
+        Min = 1,
+        Max = 10,
+        Default = 4,
+        Suffix = function(val)
+            return val == 1 and 'stud' or 'studs'
+        end,
+        Tooltip = 'Extra studs added beyond the default 4x7x4 head hitbox',
+    })
+    HeadHit:CreateToggle({
+        Name = 'Players Only',
+        Default = false,
+        Tooltip = 'Only expand head hitbox for players, skip NPCs',
+    })
+    HeadHit:CreateToggle({
+        Name = 'Pulse Size',
+        Default = false,
+        Tooltip = 'Oscillate hitbox size slightly to avoid detection patterns',
     })
 end)
 
@@ -4512,13 +4642,33 @@ run(function()
 end)
 
 run(function()
-    vape.Categories.Blatant:CreateModule({
+    local KeepSprint = vape.Categories.Blatant:CreateModule({
         Name = 'Keep Sprint',
         Function = function(callback)
             debug.setconstant(bedwars.SprintController.startSprinting, 5, callback and 'blockSprinting' or 'blockSprint')
             bedwars.SprintController:stopSprinting()
         end,
         Tooltip = 'Lets you sprint with a speed potion.'
+    })
+    KeepSprint:CreateSlider({
+        Name = 'Speed Buff',
+        Min = 0,
+        Max = 8,
+        Default = 0,
+        Suffix = function(val)
+            return val == 1 and 'stud/s' or 'studs/s'
+        end,
+        Tooltip = 'Bonus walkspeed added on top of sprint speed',
+    })
+    KeepSprint:CreateToggle({
+        Name = 'Anti Stun',
+        Default = false,
+        Tooltip = 'Automatically re-enable sprint after a stun effect wears off',
+    })
+    KeepSprint:CreateToggle({
+        Name = 'Mobile Hide',
+        Default = false,
+        Tooltip = 'Hide the sprint button on mobile to avoid detection',
     })
 end)
 
@@ -5280,6 +5430,24 @@ run(function()
         Name = 'Swing only',
         Tooltip = 'Only attacks while swinging manually'
     })
+    Killaura:CreateToggle({
+        Name = 'Multi Swing',
+        Default = false,
+        Tooltip = 'Swing at multiple targets in the same tick',
+    })
+    Killaura:CreateSlider({
+        Name = 'Swing Delay',
+        Min = 0,
+        Max = 200,
+        Default = 0,
+        Suffix = 'ms',
+        Tooltip = 'Random extra delay between swings to appear more human',
+    })
+    Killaura:CreateToggle({
+        Name = 'Break On Death',
+        Default = true,
+        Tooltip = 'Stop attacking when target dies and auto-select the next',
+    })
 end)
 
 
@@ -5510,6 +5678,26 @@ run(function()
     CameraDir = LongJump:CreateToggle({
         Name = 'Camera Direction'
     })
+    LongJump:CreateSlider({
+        Name = 'Jump Height',
+        Min = 0,
+        Max = 50,
+        Default = 15,
+        Suffix = function(val)
+            return val == 1 and 'stud' or 'studs'
+        end,
+        Tooltip = 'Extra vertical velocity applied during the jump phase',
+    })
+    LongJump:CreateToggle({
+        Name = 'Auto Activate',
+        Default = false,
+        Tooltip = 'Automatically activate Long Jump when enemies are in swing range',
+    })
+    LongJump:CreateToggle({
+        Name = 'Cooldown Skip',
+        Default = false,
+        Tooltip = 'Try next available jump method if current one is on cooldown',
+    })
 end)
 
 run(function()
@@ -5662,7 +5850,7 @@ end)
 run(function()
     local old
     
-    vape.Categories.Blatant:CreateModule({
+    local NoSlow = vape.Categories.Blatant:CreateModule({
         Name = 'No Slow',
         Function = function(callback)
             local modifier = bedwars.SprintController:getMovementStatusModifier()
@@ -5686,6 +5874,21 @@ run(function()
             end
         end,
         Tooltip = 'Prevents slowing down when using items.'
+    })
+    NoSlow:CreateToggle({
+        Name = 'Potion Filter',
+        Default = false,
+        Tooltip = 'Also cancel slowness applied by potions and consumables',
+    })
+    NoSlow:CreateToggle({
+        Name = 'Full Block',
+        Default = false,
+        Tooltip = 'Block all speed modifiers below 100%, including partial slows',
+    })
+    NoSlow:CreateToggle({
+        Name = 'Debug Notify',
+        Default = false,
+        Tooltip = 'Show a notification whenever a slow effect is blocked',
     })
 end)
 
@@ -5773,6 +5976,29 @@ run(function()
             return val <= 0 and 'stud' or 'studs'
         end,
         Default = 50,
+    })
+    OwlAura:CreateSlider({
+        Name = 'Fire Delay',
+        Min = 0,
+        Max = 1,
+        Default = 0.1,
+        Decimal = 100,
+        Suffix = 'seconds',
+        Tooltip = 'Minimum time between successive owl projectile shots',
+    })
+    OwlAura:CreateDropdown({
+        Name = 'Target Mode',
+        List = {'Health', 'Distance', 'Damage'},
+        Default = 'Health',
+        Tooltip = 'Which sorting method to use when selecting targets',
+    })
+    OwlAura:CreateSlider({
+        Name = 'Prediction Scale',
+        Min = 0.5,
+        Max = 2,
+        Default = 1,
+        Decimal = 10,
+        Tooltip = 'Scale the trajectory prediction multiplier',
     })
 end)
 
@@ -6015,6 +6241,23 @@ run(function()
     	Darker = true,
     	Placeholder = 'projectile',
     })
+    ProjectileAimbot:CreateSlider({
+    	Name = 'Min FOV',
+    	Min = 1,
+    	Max = 500,
+    	Default = 1,
+    	Tooltip = 'Minimum FOV pixels required to engage aimbot on a target',
+    })
+    ProjectileAimbot:CreateToggle({
+    	Name = 'Aim Lock',
+    	Default = false,
+    	Tooltip = 'Stay locked on the current target until they leave range',
+    })
+    ProjectileAimbot:CreateToggle({
+    	Name = 'Silent Aim',
+    	Default = true,
+    	Tooltip = 'Apply aimbot server-side only, keeping local camera unchanged',
+    })
 end)
 
 run(function()
@@ -6104,6 +6347,26 @@ run(function()
         Name = 'Always Jump',
         Visible = false,
         Darker = true
+    })
+    Speed:CreateToggle({
+        Name = 'Strafe Boost',
+        Default = false,
+        Tooltip = 'Apply CFrame boost in strafe directions as well as forward',
+    })
+    Speed:CreateToggle({
+        Name = 'Sprint Anti Stun',
+        Default = false,
+        Tooltip = 'Automatically re-enable speed after a stun effect expires',
+    })
+    Speed:CreateSlider({
+        Name = 'Attack Burst',
+        Min = 0,
+        Max = 5,
+        Default = 0,
+        Suffix = function(val)
+            return val == 1 and 'stud/s' or 'studs/s'
+        end,
+        Tooltip = 'Extra speed burst applied during melee attacks',
     })
 end)
 
@@ -6235,6 +6498,26 @@ run(function()
         Name = 'Use bedwars climbing',
         Tooltip = 'Makes you look like ur climbing with a kit (ex: Yamini)'
     })
+    Spider:CreateToggle({
+        Name = 'Side Climb',
+        Default = false,
+        Tooltip = 'Allow climbing side-facing walls, not just front-facing ones',
+    })
+    Spider:CreateToggle({
+        Name = 'Stop At Top',
+        Default = false,
+        Tooltip = 'Automatically stop climbing when you reach the top of a wall',
+    })
+    Spider:CreateSlider({
+        Name = 'Climb Boost',
+        Min = 0,
+        Max = 50,
+        Default = 0,
+        Suffix = function(val)
+            return val == 1 and 'stud/s' or 'studs/s'
+        end,
+        Tooltip = 'Extra speed burst when approaching ceiling level',
+    })
 end)
 
 run(function()
@@ -6291,6 +6574,25 @@ run(function()
         Suffix = function(val)
             return val <= 1 and 'studs' or 'stud'
         end
+    })
+    TerraAimbot:CreateSlider({
+        Name = 'Prediction Scale',
+        Min = 0.5,
+        Max = 2,
+        Default = 1,
+        Decimal = 10,
+        Tooltip = 'Scale trajectory prediction for moving targets',
+    })
+    TerraAimbot:CreateToggle({
+        Name = 'Team Filter',
+        Default = true,
+        Tooltip = 'Skip teammates when selecting terra aimbot targets',
+    })
+    TerraAimbot:CreateDropdown({
+        Name = 'Aim Part',
+        List = {'RootPart', 'Head'},
+        Default = 'RootPart',
+        Tooltip = 'Which body part to aim terra blocks toward',
     })
 end)
 
@@ -6355,6 +6657,27 @@ run(function()
         Max = 1000,
         Default = 500
     })
+    VulcanAimbot:CreateSlider({
+        Name = 'Prediction Scale',
+        Min = 0.5,
+        Max = 2,
+        Default = 1,
+        Decimal = 10,
+        Tooltip = 'Scale trajectory prediction multiplier for moving targets',
+    })
+    VulcanAimbot:CreateSlider({
+        Name = 'Smooth Aim',
+        Min = 0,
+        Max = 200,
+        Default = 0,
+        Suffix = 'ms',
+        Tooltip = 'Smoothing delay between aim update cycles in milliseconds',
+    })
+    VulcanAimbot:CreateToggle({
+        Name = 'Lock Target',
+        Default = false,
+        Tooltip = 'Stay locked on the current target until they leave range',
+    })
 end)
 
 run(function()
@@ -6398,6 +6721,25 @@ run(function()
             end
         end,
         Tooltip = 'Phases your Cyber Drone through walls.',
+    })
+    DronePhase:CreateSlider({
+        Name = 'Phase Delay',
+        Min = 0,
+        Max = 0.5,
+        Default = 0,
+        Decimal = 100,
+        Suffix = 'seconds',
+        Tooltip = 'Delay between collision toggles when phasing through walls',
+    })
+    DronePhase:CreateToggle({
+        Name = 'All Parts',
+        Default = true,
+        Tooltip = 'Phase all drone descendant parts instead of only collidable ones',
+    })
+    DronePhase:CreateToggle({
+        Name = 'Auto Disable',
+        Default = false,
+        Tooltip = 'Automatically disable phase when drone is recalled by the server',
     })
 end)
 
@@ -13210,6 +13552,26 @@ run(function()
             end
         end,
         Tooltip = 'Spoof - Network level state spoof (needs raknet)\nBlock - Places a block under you to break the fall',
+    })
+    NoFallDamage:CreateToggle({
+        Name = 'Auto Reset',
+        Default = true,
+        Tooltip = 'Automatically reset protection state after each landing',
+    })
+    NoFallDamage:CreateToggle({
+        Name = 'Notify',
+        Default = false,
+        Tooltip = 'Show a notification when fall damage is successfully prevented',
+    })
+    NoFallDamage:CreateSlider({
+        Name = 'Height Threshold',
+        Min = 0,
+        Max = 100,
+        Default = 0,
+        Suffix = function(val)
+            return val == 1 and 'stud' or 'studs'
+        end,
+        Tooltip = 'Minimum fall height before protection activates',
     })
 end)
 
@@ -28787,6 +29149,25 @@ run(function()
         Darker = true,
         Visible = false,
         Default = 0
+    })
+    Killaura:CreateToggle({
+        Name = 'Ping Compensate',
+        Default = true,
+        Tooltip = 'Adjust attack timing based on your current network ping',
+    })
+    Killaura:CreateToggle({
+        Name = 'Anti Ghost',
+        Default = false,
+        Tooltip = 'Resend the attack packet if no damage registers within 0.5s',
+    })
+    Killaura:CreateSlider({
+        Name = 'Combo Delay',
+        Min = 0,
+        Max = 0.5,
+        Default = 0,
+        Decimal = 100,
+        Suffix = 'seconds',
+        Tooltip = 'Extra delay between combo hits for a more legitimate-looking attack pattern',
     })
 
     task.defer(function()
