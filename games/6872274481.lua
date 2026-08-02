@@ -1858,10 +1858,6 @@ run(function()
     		lasttarget = nil
     	end
     })
-    VisibleOnly = AimAssist:CreateToggle({
-    	Name = 'Visible only',
-    	Tooltip = 'Stop aiming if the target goes behind a wall'
-    })
 end)
 
 run(function()
@@ -2046,14 +2042,6 @@ run(function()
     SwordOnly = AutoClicker:CreateToggle({
     	Name = 'Sword only',
     	Tooltip = 'Skip auto clicking when holding a block — combat only'
-    })
-    RandomPause = AutoClicker:CreateToggle({
-    	Name = 'Random pause',
-    	Tooltip = 'Randomly skip ~5% of swings to look more human'
-    })
-    AimCheck = AutoClicker:CreateToggle({
-    	Name = 'Aim check',
-    	Tooltip = 'Only swing when an enemy is within 12 studs'
     })
 end)
 
@@ -2476,24 +2464,6 @@ run(function()
             end
         end,
         Tooltip = 'Remove the CPS cap'
-    })
-    Legit = ncdMod:CreateToggle({
-        Name = 'Legit mode',
-        Default = false,
-        Tooltip = 'Add a small random per-click jitter so click rate looks human',
-    })
-    CPSCap = ncdMod:CreateSlider({
-        Name = 'CPS cap',
-        Min = 0,
-        Max = 30,
-        Default = 0,
-        Suffix = ' cps',
-        Tooltip = 'Soft CPS limit — 0 means fully uncapped',
-    })
-    RandomSpike = ncdMod:CreateToggle({
-        Name = 'Random spike',
-        Default = false,
-        Tooltip = 'Randomly skip ~5%% of swings to break uniform click patterns',
     })
 end)
 
@@ -3094,9 +3064,8 @@ run(function()
         Suffix = ' ws'
     })
     BunnyHop = Sprint:CreateToggle({ Name = 'Bunny Hop', Default = false })
-    WTap = Sprint:CreateToggle({ Name = 'W-Tap', Default = false })
-end)
 
+end)
 run(function()
     local TriggerBot, CPS, TBotDelay, TBotJitter, TBotFOV
     local rayParams = RaycastParams.new()
@@ -3162,14 +3131,6 @@ run(function()
         Default = 0,
         Suffix = 'ms',
         Tooltip = 'Pause before each swing to look more human'
-    })
-    TBotJitter = TriggerBot:CreateSlider({
-        Name = 'Delay jitter',
-        Min = 0,
-        Max = 300,
-        Default = 0,
-        Suffix = 'ms',
-        Tooltip = 'Randomize delay by this much each swing'
     })
     TBotFOV = TriggerBot:CreateSlider({
         Name = 'FOV filter',
@@ -3730,11 +3691,6 @@ run(function()
         Tooltip = 'Minimum delay between successive attacks',
     })
     AutoKaida:CreateToggle({
-        Name = 'AutoCharge',
-        Default = false,
-        Tooltip = 'Automatically use ability when mana allows, regardless of Swing during ability setting',
-    })
-    AutoKaida:CreateToggle({
         Name = 'FaceTarget',
         Default = false,
         Tooltip = 'Snap camera toward target before each attack',
@@ -3784,6 +3740,11 @@ run(function()
     	Name = 'Notify',
     	Default = false,
     	Tooltip = 'Show a notification each time the boost activates',
+    })
+    DamageBoost:CreateToggle({
+    	Name = 'Attack Burst',
+    	Default = false,
+    	Tooltip = 'Give a quick speed burst whenever you land a melee hit',
     })
 end)
 
@@ -4138,91 +4099,8 @@ run(function()
             return val == 1 and 'stud' or 'studs'
         end
     })
-    HitBoxes:CreateToggle({
-        Name = 'Team Check',
-        Default = false,
-        Tooltip = 'Skip teammates when expanding hitboxes',
-    })
-    HitBoxes:CreateToggle({
-        Name = 'Random Expand',
-        Default = false,
-        Tooltip = 'Randomize expand amount by up to 2 studs each hit to avoid detection patterns',
-    })
-    HitBoxes:CreateToggle({
-        Name = 'Expand On Hit',
-        Default = false,
-        Tooltip = 'Only expand hitbox when you land a successful hit',
-    })
 end)
 
-
-run(function()
-    local objects = {}
-
-    local function createHeadHitbox(ent)
-        if ent.Targetable then
-            local head = ent.Character:FindFirstChild('Head')
-            if not head then return end
-            local hitbox = Instance.new('Part')
-            hitbox.Name = 'Head'
-            hitbox.Size = Vector3.new(4, 7, 4)
-            hitbox.CanCollide = false
-            hitbox.Massless = true
-            hitbox.Transparency = 1
-            hitbox.Parent = ent.Character
-            local weld = Instance.new('Motor6D')
-            weld.Part0 = hitbox
-            weld.Part1 = head
-            weld.C1 = CFrame.new(0, -2.5, 0)
-            weld.Parent = hitbox
-            objects[ent] = hitbox
-        end
-    end
-
-    HeadHit = vape.Categories.Blatant:CreateModule({
-        Name = 'Head Hit',
-        Function = function(callback)
-            if callback then
-                HeadHit:Clean(entitylib.Events.EntityAdded:Connect(createHeadHitbox))
-                HeadHit:Clean(entitylib.Events.EntityRemoving:Connect(function(ent)
-                    if objects[ent] then
-                        objects[ent]:Destroy()
-                        objects[ent] = nil
-                    end
-                end))
-                for _, ent in entitylib.List do
-                    createHeadHitbox(ent)
-                end
-            else
-                for _, part in objects do
-                    part:Destroy()
-                end
-                table.clear(objects)
-            end
-        end,
-        Tooltip = 'Expands enemy Head hitbox to cover the whole body — projectile hits anywhere register as head hits'
-    })
-    HeadHit:CreateSlider({
-        Name = 'Expand Size',
-        Min = 1,
-        Max = 10,
-        Default = 4,
-        Suffix = function(val)
-            return val == 1 and 'stud' or 'studs'
-        end,
-        Tooltip = 'Extra studs added beyond the default 4x7x4 head hitbox',
-    })
-    HeadHit:CreateToggle({
-        Name = 'Players Only',
-        Default = false,
-        Tooltip = 'Only expand head hitbox for players, skip NPCs',
-    })
-    HeadHit:CreateToggle({
-        Name = 'Pulse Size',
-        Default = false,
-        Tooltip = 'Oscillate hitbox size slightly to avoid detection patterns',
-    })
-end)
 
 run(function()
     local KeepSprint = vape.Categories.Blatant:CreateModule({
@@ -4232,26 +4110,6 @@ run(function()
             bedwars.SprintController:stopSprinting()
         end,
         Tooltip = 'Lets you sprint with a speed potion.'
-    })
-    KeepSprint:CreateSlider({
-        Name = 'Speed Buff',
-        Min = 0,
-        Max = 8,
-        Default = 0,
-        Suffix = function(val)
-            return val == 1 and 'stud/s' or 'studs/s'
-        end,
-        Tooltip = 'Bonus walkspeed added on top of sprint speed',
-    })
-    KeepSprint:CreateToggle({
-        Name = 'Anti Stun',
-        Default = false,
-        Tooltip = 'Automatically re-enable sprint after a stun effect wears off',
-    })
-    KeepSprint:CreateToggle({
-        Name = 'Mobile Hide',
-        Default = false,
-        Tooltip = 'Hide the sprint button on mobile to avoid detection',
     })
 end)
 
@@ -5013,24 +4871,6 @@ run(function()
         Name = 'Swing only',
         Tooltip = 'Only attacks while swinging manually'
     })
-    Killaura:CreateToggle({
-        Name = 'Multi Swing',
-        Default = false,
-        Tooltip = 'Swing at multiple targets in the same tick',
-    })
-    Killaura:CreateSlider({
-        Name = 'Swing Delay',
-        Min = 0,
-        Max = 200,
-        Default = 0,
-        Suffix = 'ms',
-        Tooltip = 'Random extra delay between swings to appear more human',
-    })
-    Killaura:CreateToggle({
-        Name = 'Break On Death',
-        Default = true,
-        Tooltip = 'Stop attacking when target dies and auto-select the next',
-    })
 end)
 
 
@@ -5261,26 +5101,6 @@ run(function()
     CameraDir = LongJump:CreateToggle({
         Name = 'Camera Direction'
     })
-    LongJump:CreateSlider({
-        Name = 'Jump Height',
-        Min = 0,
-        Max = 50,
-        Default = 15,
-        Suffix = function(val)
-            return val == 1 and 'stud' or 'studs'
-        end,
-        Tooltip = 'Extra vertical velocity applied during the jump phase',
-    })
-    LongJump:CreateToggle({
-        Name = 'Auto Activate',
-        Default = false,
-        Tooltip = 'Automatically activate Long Jump when enemies are in swing range',
-    })
-    LongJump:CreateToggle({
-        Name = 'Cooldown Skip',
-        Default = false,
-        Tooltip = 'Try next available jump method if current one is on cooldown',
-    })
 end)
 
 run(function()
@@ -5310,16 +5130,6 @@ run(function()
             end
         end,
         Tooltip = 'Prevents slowing down when using items.'
-    })
-    NoSlow:CreateToggle({
-        Name = 'Potion Filter',
-        Default = false,
-        Tooltip = 'Also cancel slowness applied by potions and consumables',
-    })
-    NoSlow:CreateToggle({
-        Name = 'Full Block',
-        Default = false,
-        Tooltip = 'Block all speed modifiers below 100%, including partial slows',
     })
     NoSlow:CreateToggle({
         Name = 'Debug Notify',
@@ -5412,29 +5222,6 @@ run(function()
             return val <= 0 and 'stud' or 'studs'
         end,
         Default = 50,
-    })
-    OwlAura:CreateSlider({
-        Name = 'Fire Delay',
-        Min = 0,
-        Max = 1,
-        Default = 0.1,
-        Decimal = 100,
-        Suffix = 'seconds',
-        Tooltip = 'Minimum time between successive owl projectile shots',
-    })
-    OwlAura:CreateDropdown({
-        Name = 'Target Mode',
-        List = {'Health', 'Distance', 'Damage'},
-        Default = 'Health',
-        Tooltip = 'Which sorting method to use when selecting targets',
-    })
-    OwlAura:CreateSlider({
-        Name = 'Prediction Scale',
-        Min = 0.5,
-        Max = 2,
-        Default = 1,
-        Decimal = 10,
-        Tooltip = 'Scale the trajectory prediction multiplier',
     })
 end)
 
@@ -5622,23 +5409,6 @@ run(function()
     	Darker = true,
     	Placeholder = 'projectile',
     })
-    ProjectileAimbot:CreateSlider({
-    	Name = 'Min FOV',
-    	Min = 1,
-    	Max = 500,
-    	Default = 1,
-    	Tooltip = 'Minimum FOV pixels required to engage aimbot on a target',
-    })
-    ProjectileAimbot:CreateToggle({
-    	Name = 'Aim Lock',
-    	Default = false,
-    	Tooltip = 'Stay locked on the current target until they leave range',
-    })
-    ProjectileAimbot:CreateToggle({
-    	Name = 'Silent Aim',
-    	Default = true,
-    	Tooltip = 'Apply aimbot server-side only, keeping local camera unchanged',
-    })
 end)
 
 run(function()
@@ -5728,26 +5498,6 @@ run(function()
         Name = 'Always Jump',
         Visible = false,
         Darker = true
-    })
-    Speed:CreateToggle({
-        Name = 'Strafe Boost',
-        Default = false,
-        Tooltip = 'Apply CFrame boost in strafe directions as well as forward',
-    })
-    Speed:CreateToggle({
-        Name = 'Sprint Anti Stun',
-        Default = false,
-        Tooltip = 'Automatically re-enable speed after a stun effect expires',
-    })
-    Speed:CreateSlider({
-        Name = 'Attack Burst',
-        Min = 0,
-        Max = 5,
-        Default = 0,
-        Suffix = function(val)
-            return val == 1 and 'stud/s' or 'studs/s'
-        end,
-        Tooltip = 'Extra speed burst applied during melee attacks',
     })
 end)
 
@@ -5879,26 +5629,6 @@ run(function()
         Name = 'Use bedwars climbing',
         Tooltip = 'Makes you look like ur climbing with a kit (ex: Yamini)'
     })
-    Spider:CreateToggle({
-        Name = 'Side Climb',
-        Default = false,
-        Tooltip = 'Allow climbing side-facing walls, not just front-facing ones',
-    })
-    Spider:CreateToggle({
-        Name = 'Stop At Top',
-        Default = false,
-        Tooltip = 'Automatically stop climbing when you reach the top of a wall',
-    })
-    Spider:CreateSlider({
-        Name = 'Climb Boost',
-        Min = 0,
-        Max = 50,
-        Default = 0,
-        Suffix = function(val)
-            return val == 1 and 'stud/s' or 'studs/s'
-        end,
-        Tooltip = 'Extra speed burst when approaching ceiling level',
-    })
 end)
 
 run(function()
@@ -5955,25 +5685,6 @@ run(function()
         Suffix = function(val)
             return val <= 1 and 'studs' or 'stud'
         end
-    })
-    TerraAimbot:CreateSlider({
-        Name = 'Prediction Scale',
-        Min = 0.5,
-        Max = 2,
-        Default = 1,
-        Decimal = 10,
-        Tooltip = 'Scale trajectory prediction for moving targets',
-    })
-    TerraAimbot:CreateToggle({
-        Name = 'Team Filter',
-        Default = true,
-        Tooltip = 'Skip teammates when selecting terra aimbot targets',
-    })
-    TerraAimbot:CreateDropdown({
-        Name = 'Aim Part',
-        List = {'RootPart', 'Head'},
-        Default = 'RootPart',
-        Tooltip = 'Which body part to aim terra blocks toward',
     })
 end)
 
@@ -6038,27 +5749,6 @@ run(function()
         Max = 1000,
         Default = 500
     })
-    VulcanAimbot:CreateSlider({
-        Name = 'Prediction Scale',
-        Min = 0.5,
-        Max = 2,
-        Default = 1,
-        Decimal = 10,
-        Tooltip = 'Scale trajectory prediction multiplier for moving targets',
-    })
-    VulcanAimbot:CreateSlider({
-        Name = 'Smooth Aim',
-        Min = 0,
-        Max = 200,
-        Default = 0,
-        Suffix = 'ms',
-        Tooltip = 'Smoothing delay between aim update cycles in milliseconds',
-    })
-    VulcanAimbot:CreateToggle({
-        Name = 'Lock Target',
-        Default = false,
-        Tooltip = 'Stay locked on the current target until they leave range',
-    })
 end)
 
 run(function()
@@ -6102,25 +5792,6 @@ run(function()
             end
         end,
         Tooltip = 'Phases your Cyber Drone through walls.',
-    })
-    DronePhase:CreateSlider({
-        Name = 'Phase Delay',
-        Min = 0,
-        Max = 0.5,
-        Default = 0,
-        Decimal = 100,
-        Suffix = 'seconds',
-        Tooltip = 'Delay between collision toggles when phasing through walls',
-    })
-    DronePhase:CreateToggle({
-        Name = 'All Parts',
-        Default = true,
-        Tooltip = 'Phase all drone descendant parts instead of only collidable ones',
-    })
-    DronePhase:CreateToggle({
-        Name = 'Auto Disable',
-        Default = false,
-        Tooltip = 'Automatically disable phase when drone is recalled by the server',
     })
 end)
 
@@ -12933,26 +12604,6 @@ run(function()
             end
         end,
         Tooltip = 'Spoof - Network level state spoof (needs raknet)\nBlock - Places a block under you to break the fall',
-    })
-    NoFallDamage:CreateToggle({
-        Name = 'Auto Reset',
-        Default = true,
-        Tooltip = 'Automatically reset protection state after each landing',
-    })
-    NoFallDamage:CreateToggle({
-        Name = 'Notify',
-        Default = false,
-        Tooltip = 'Show a notification when fall damage is successfully prevented',
-    })
-    NoFallDamage:CreateSlider({
-        Name = 'Height Threshold',
-        Min = 0,
-        Max = 100,
-        Default = 0,
-        Suffix = function(val)
-            return val == 1 and 'stud' or 'studs'
-        end,
-        Tooltip = 'Minimum fall height before protection activates',
     })
 end)
 
@@ -26081,18 +25732,6 @@ run(function()
         Max = 100,
         Default = 20,
         Tooltip = 'Only fire when mana is at or above this value',
-    })
-    BurstCount = WhimAuto:CreateSlider({
-        Name = 'Burst Count',
-        Min = 1,
-        Max = 3,
-        Default = 1,
-        Tooltip = 'Fire this many spells per trigger (costs mana per shot)',
-    })
-    WallBypass = WhimAuto:CreateToggle({
-        Name = 'Wall Bypass',
-        Default = false,
-        Tooltip = 'Fire through walls — skip the line-of-sight check',
     })
 end)
 run(function()
