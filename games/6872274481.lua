@@ -1592,6 +1592,8 @@ run(function()
     local AimSpeed
     local Shake
     local Distance
+    local TargetLock, Prediction, VisibleOnly
+    local lockedEnt
     local AngleSlider
     local StrafeIncrease
     local BlockBreak
@@ -1621,10 +1623,10 @@ run(function()
     		for _, v in cache[ent.Character] do
     			if v and v.Parent and v:IsA('BasePart') then
     				local position, vis = gameCamera.WorldToViewportPoint(gameCamera, v.Position)
-    
+
     				if vis then
     					local mag = (localPosition - Vector2.new(position.x, position.y)).Magnitude
-    
+
     					if mag < magnitude then
     						magnitude = mag
     						part = v
@@ -1633,10 +1635,18 @@ run(function()
     			end
     		end
     		if part then
-    			return part.Position
+    			local pos = part.Position
+    			if Prediction and Prediction.Value > 0 then
+    				pos = pos + (part.AssemblyLinearVelocity or Vector3.zero) * (Prediction.Value / 1000)
+    			end
+    			return pos
     		end
     	end
-    	return ent.RootPart.Position
+    	local pos = ent.RootPart.Position
+    	if Prediction and Prediction.Value > 0 then
+    		pos = pos + ent.RootPart.AssemblyLinearVelocity * (Prediction.Value / 1000)
+    	end
+    	return pos
     end
     
     local started, lasttarget = 0, nil
@@ -1686,7 +1696,9 @@ run(function()
     		return false
     	end
     
-    	if (tick() - started) > 1 or not lasttarget or not lasttarget.Parent or not lasttarget.Humanoid or lasttarget.Humanoid.Health <= 0 then
+    	local targetDead = not lasttarget or not lasttarget.Parent or not lasttarget.Humanoid or lasttarget.Humanoid.Health <= 0
+    	local shouldRefresh = targetDead or (not (TargetLock and TargetLock.Enabled) and (tick() - started) > 1)
+    	if shouldRefresh then
     		local ent = GetTarget() or KillauraTarget.Enabled and store.KillauraTarget or entitylib.EntityPosition({
     			Range = Distance.Value,
     			Part = 'RootPart',
@@ -1699,6 +1711,16 @@ run(function()
     			started = tick()
     		end
     		lasttarget = ent
+    		lockedEnt = TargetLock and TargetLock.Enabled and ent or nil
+    	end
+    	if VisibleOnly and VisibleOnly.Enabled and lasttarget then
+    		local visParams = RaycastParams.new()
+    		visParams.FilterDescendantsInstances = {lplr.Character, lasttarget.Character}
+    		visParams.FilterType = Enum.RaycastFilterType.Exclude
+    		local origin = entitylib.character.RootPart.Position
+    		local dir = lasttarget.RootPart.Position - origin
+    		local ray = workspace:Raycast(origin, dir, visParams)
+    		if ray then return false end
     	end
     	return lasttarget
     end
@@ -1820,6 +1842,26 @@ run(function()
     	List = {'Center', 'Closest'},
     	Default = 'Center',
     })
+    Prediction = AimAssist:CreateSlider({
+    	Name = 'Prediction',
+    	Min = 0,
+    	Max = 500,
+    	Default = 0,
+    	Suffix = 'ms',
+    	Tooltip = 'Lead moving targets by this much'
+    })
+    TargetLock = AimAssist:CreateToggle({
+    	Name = 'Target lock',
+    	Tooltip = 'Stick to the same target instead of switching every second',
+    	Function = function()
+    		lockedEnt = nil
+    		lasttarget = nil
+    	end
+    })
+    VisibleOnly = AimAssist:CreateToggle({
+    	Name = 'Visible only',
+    	Tooltip = 'Stop aiming if the target goes behind a wall'
+    })
 end)
 
 run(function()
@@ -1830,6 +1872,7 @@ run(function()
     local MobileCPS
     local MobileDutyCycle
     local MobileThread
+    local SwordOnly, RandomPause, AimCheck
 
     local function MobileClick()
         if MobileThread then
@@ -1870,7 +1913,7 @@ run(function()
     		repeat
     			if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
     				local blockPlacer = bedwars.BlockPlacementController.blockPlacer
-    				if store.hand.toolType == 'block' and blockPlacer then
+    				if store.hand.toolType == 'block' and blockPlacer and not (SwordOnly and SwordOnly.Enabled) then
     					if canDebug then
     						if inputService.TouchEnabled then
     							task.spawn(function()
@@ -1901,7 +1944,11 @@ run(function()
     						end
     					end
     				elseif store.hand.toolType == 'sword' then
-    					bedwars.SwordController:swingSwordAtMouse(0.39)
+    					local skip = (RandomPause and RandomPause.Enabled and math.random() < 0.05)
+    						or (AimCheck and AimCheck.Enabled and not entitylib.EntityPosition({Range = 12, Part = 'RootPart', Players = true}))
+    					if not skip then
+    						bedwars.SwordController:swingSwordAtMouse(0.39)
+    					end
     				end
     			end
 
@@ -1996,6 +2043,18 @@ run(function()
     })
     if MobileCPS.Object then MobileCPS.Object.Visible = false end
     if MobileDutyCycle.Object then MobileDutyCycle.Object.Visible = false end
+    SwordOnly = AutoClicker:CreateToggle({
+    	Name = 'Sword only',
+    	Tooltip = 'Skip auto clicking when holding a block — combat only'
+    })
+    RandomPause = AutoClicker:CreateToggle({
+    	Name = 'Random pause',
+    	Tooltip = 'Randomly skip ~5% of swings to look more human'
+    })
+    AimCheck = AutoClicker:CreateToggle({
+    	Name = 'Aim check',
+    	Tooltip = 'Only swing when an enemy is within 12 studs'
+    })
 end)
 
 run(function()
@@ -2899,17 +2958,17 @@ run(function()
 end)
 
 run(function()
-    local Sprint
+    local Sprint, SpeedBoost, BunnyHop, WTap
     local old
-    
+
     Sprint = vape.Categories.Combat:CreateModule({
         Name = 'Sprint',
         Function = function(callback)
             if callback then
-                if inputService.TouchEnabled then 
-                    pcall(function() 
-                        lplr.PlayerGui.MobileUI['4'].Visible = false 
-                    end) 
+                if inputService.TouchEnabled then
+                    pcall(function()
+                        lplr.PlayerGui.MobileUI['4'].Visible = false
+                    end)
                 end
                 old = bedwars.SprintController.stopSprinting
                 bedwars.SprintController.stopSprinting = function(...)
@@ -2917,31 +2976,73 @@ run(function()
                     bedwars.SprintController:startSprinting()
                     return call
                 end
-                Sprint:Clean(entitylib.Events.LocalAdded:Connect(function() 
-                    task.delay(0.1, function() 
-                        bedwars.SprintController:stopSprinting() 
-                    end) 
+
+                Sprint:Clean(runService.Heartbeat:Connect(function()
+                    if SpeedBoost.Value > 0 then
+                        local hum = lplr.Character and lplr.Character:FindFirstChildOfClass('Humanoid')
+                        if hum then hum.WalkSpeed = 16 + SpeedBoost.Value end
+                    end
+                end))
+
+                local function hookChar(char)
+                    local hum = char:WaitForChild('Humanoid', 3)
+                    if not hum then return end
+                    Sprint:Clean(hum.StateChanged:Connect(function(_, new)
+                        if new == Enum.HumanoidStateType.Landed and BunnyHop.Enabled then
+                            task.wait()
+                            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                        end
+                    end))
+                end
+                Sprint:Clean(lplr.CharacterAdded:Connect(hookChar))
+                if lplr.Character then hookChar(lplr.Character) end
+
+                Sprint:Clean(inputService.InputBegan:Connect(function(input, gp)
+                    if gp then return end
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 and WTap.Enabled then
+                        bedwars.SprintController:stopSprinting()
+                        task.delay(0.06, function()
+                            if Sprint.Enabled then bedwars.SprintController:startSprinting() end
+                        end)
+                    end
+                end))
+
+                Sprint:Clean(entitylib.Events.LocalAdded:Connect(function()
+                    task.delay(0.1, function()
+                        bedwars.SprintController:stopSprinting()
+                    end)
                 end))
                 bedwars.SprintController:stopSprinting()
             else
-                if inputService.TouchEnabled then 
-                    pcall(function() 
-                        lplr.PlayerGui.MobileUI['4'].Visible = true 
-                    end) 
+                if inputService.TouchEnabled then
+                    pcall(function()
+                        lplr.PlayerGui.MobileUI['4'].Visible = true
+                    end)
                 end
                 bedwars.SprintController.stopSprinting = old
                 bedwars.SprintController:stopSprinting()
+                local hum = lplr.Character and lplr.Character:FindFirstChildOfClass('Humanoid')
+                if hum then hum.WalkSpeed = 16 end
             end
         end,
         Tooltip = 'Sets your sprinting to true.'
     })
+    SpeedBoost = Sprint:CreateSlider({
+        Name = 'Speed Boost',
+        Min = 0,
+        Max = 8,
+        Default = 0,
+        Suffix = ' ws'
+    })
+    BunnyHop = Sprint:CreateToggle({ Name = 'Bunny Hop', Default = false })
+    WTap = Sprint:CreateToggle({ Name = 'W-Tap', Default = false })
 end)
 
 run(function()
-    local TriggerBot
-    local CPS
+    local TriggerBot, CPS, TBotDelay, TBotJitter, TBotFOV
     local rayParams = RaycastParams.new()
-    
+    local tbRand = Random.new()
+
     TriggerBot = vape.Categories.Combat:CreateModule({
         Name = 'Trigger Bot',
         Function = function(callback)
@@ -2952,28 +3053,36 @@ run(function()
                         if entitylib.isAlive and store.hand.toolType == 'sword' and bedwars.DaoController.chargingMaid == nil then
                             local attackRange = bedwars.ItemMeta[store.hand.tool.Name].sword.attackRange
                             rayParams.FilterDescendantsInstances = {lplr.Character}
-    
+
                             local unit = lplr:GetMouse().UnitRay
                             local localPos = entitylib.character.RootPart.Position
                             local rayRange = (attackRange or 14.4)
                             local ray = bedwars.QueryUtil:raycast(unit.Origin, unit.Direction * 200, rayParams)
                             if ray and (localPos - ray.Instance.Position).Magnitude <= rayRange then
-                                local limit = (attackRange)
                                 for _, ent in entitylib.List do
-                                    doAttack = ent.Targetable and ray.Instance:IsDescendantOf(ent.Character) and (localPos - ent.RootPart.Position).Magnitude <= rayRange
-                                    if doAttack then
+                                    if ent.Targetable and ray.Instance:IsDescendantOf(ent.Character) and (localPos - ent.RootPart.Position).Magnitude <= rayRange then
+                                        if TBotFOV.Value < 360 then
+                                            local toTarget = (ent.RootPart.Position - gameCamera.CFrame.Position).Unit
+                                            local angle = math.deg(math.acos(math.clamp(gameCamera.CFrame.LookVector:Dot(toTarget), -1, 1)))
+                                            if angle > TBotFOV.Value / 2 then break end
+                                        end
+                                        doAttack = true
                                         break
                                     end
                                 end
                             end
-    
+
                             doAttack = doAttack or bedwars.SwordController:getTargetInRegion(attackRange or 3.8 * 3, 0)
                             if doAttack then
-                                bedwars.SwordController:swingSwordAtMouse()
+                                local delay = TBotDelay.Value + (TBotJitter.Value > 0 and tbRand:NextNumber(0, TBotJitter.Value) or 0)
+                                if delay > 0 then task.wait(delay) end
+                                if TriggerBot.Enabled then
+                                    bedwars.SwordController:swingSwordAtMouse()
+                                end
                             end
                         end
                     end
-    
+
                     task.wait(doAttack and 1 / CPS.GetRandomValue() or 0.016)
                 until not TriggerBot.Enabled
             end
@@ -2986,6 +3095,30 @@ run(function()
         Max = 9,
         DefaultMin = 7,
         DefaultMax = 7
+    })
+    TBotDelay = TriggerBot:CreateSlider({
+        Name = 'Swing delay',
+        Min = 0,
+        Max = 500,
+        Default = 0,
+        Suffix = 'ms',
+        Tooltip = 'Pause before each swing to look more human'
+    })
+    TBotJitter = TriggerBot:CreateSlider({
+        Name = 'Delay jitter',
+        Min = 0,
+        Max = 300,
+        Default = 0,
+        Suffix = 'ms',
+        Tooltip = 'Randomize delay by this much each swing'
+    })
+    TBotFOV = TriggerBot:CreateSlider({
+        Name = 'FOV filter',
+        Min = 1,
+        Max = 360,
+        Default = 360,
+        Suffix = '°',
+        Tooltip = 'Only swing if target is within this FOV cone'
     })
 end)
 
