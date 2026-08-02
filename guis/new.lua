@@ -2552,9 +2552,22 @@ function mainapi:CreateGUI()
 	leviIcon.Size = UDim2.fromOffset(22, 22)
 	leviIcon.Position = UDim2.fromOffset(8, 8)
 	leviIcon.BackgroundTransparency = 1
-	leviIcon.Image = 'rbxassetid://16871726024'
 	leviIcon.ImageColor3 = Color3.fromRGB(100, 180, 255)
 	leviIcon.Parent = window
+	task.spawn(function()
+		local iconFile = 'levi_icon.png'
+		if getcustomasset and writefile and isfile then
+			if not isfile(iconFile) then
+				local ok, body = pcall(game.HttpGet, game, 'https://raw.githubusercontent.com/5rmsn4tt2c-ux/levi_shakingrass/main/assets/leviathan.png')
+				if ok and body and #body > 100 then
+					writefile(iconFile, body)
+				end
+			end
+			if isfile(iconFile) then
+				leviIcon.Image = getcustomasset(iconFile)
+			end
+		end
+	end)
 	local logo = Instance.new('TextLabel')
 	logo.Name = 'VapeLogo'
 	logo.Size = UDim2.fromOffset(110, 30)
