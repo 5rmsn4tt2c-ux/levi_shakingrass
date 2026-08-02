@@ -6249,6 +6249,11 @@ run(function()
     	end,
     	Default = true
     })
+    CoveragePlate = HiveESP:CreateToggle({
+    	Name = 'Coverage Plate',
+    	Default = false,
+    	Tooltip = 'Shows plate indicator of block coverage like bed plate',
+    })
 end)
 
 run(function()
@@ -6375,6 +6380,13 @@ run(function()
     			CompleteTagEffect()
     		end
     	end,
+    })
+    FontSize = CustomTags:CreateSlider({
+    	Name = 'Font Size',
+    	Min = 8,
+    	Max = 36,
+    	Default = 14,
+    	Suffix = 'px',
     })
 end)
 
@@ -7163,6 +7175,14 @@ run(function()
         Default = true,
         Visible = true
     })
+    ShowTier = GeneratorESP:CreateToggle({
+        Name = 'Show Tier',
+        Default = true,
+    })
+    TimerCountdown = GeneratorESP:CreateToggle({
+        Name = 'Timer Countdown',
+        Default = true,
+    })
 end)
 
 
@@ -7191,6 +7211,10 @@ run(function()
     		end
     	end,
     	Tooltip = 'Displays your health in the center of your screen.'
+    })
+    TeammateHealth = Health:CreateToggle({
+    	Name = 'Show Teammates',
+    	Default = false,
     })
 end)
 
@@ -8254,6 +8278,10 @@ run(function()
     	Darker = true,
     	Visible = false,
     })
+    ShowKit = NameTags:CreateToggle({
+    	Name = 'Show Kit',
+    	Default = false,
+    })
 end)
 
 run(function()
@@ -8695,6 +8723,10 @@ run(function()
         List = { 'All', 'Gold', 'Platinum', 'Diamond', 'Emerald', 'Nightmare', 'Void' },
         Default = 'All',
     })
+    RandomSkin = SkinChanger:CreateToggle({
+        Name = 'Randomize On Respawn',
+        Default = false,
+    })
 end)
 
 run(function()
@@ -8957,266 +8989,19 @@ run(function()
         List = SetList,
         Default = 'pixel',
     })
-end)
-
-run(function()
-    local AstaSword
-    local pixelModels = {}
-    local hiddenParts = {}
-
-    local SWORD_TYPES = {'wood_sword', 'stone_sword', 'iron_sword', 'diamond_sword', 'emerald_sword'}
-
-    local SWORD_PIXELS = {
-        {0,0,0,0,0,1,1,0,0,0,0,0},
-        {0,0,0,1,2,1,1,1,0,0,0,0},
-        {0,0,1,1,2,1,1,1,1,0,0,0},
-        {0,1,1,1,2,1,1,1,1,1,0,0},
-        {0,1,1,1,1,1,1,1,1,1,0,0},
-        {0,1,1,1,1,1,1,1,1,1,0,0},
-        {0,1,1,1,2,1,1,1,1,1,0,0},
-        {0,1,1,2,1,1,1,1,1,1,0,0},
-        {0,0,1,1,1,1,1,1,1,0,0,0},
-        {0,0,0,1,3,4,3,3,1,0,0,0},
-        {0,0,3,3,2,2,3,3,3,0,0,0},
-        {0,0,0,0,4,4,4,4,0,0,0,0},
-    }
-
-    local PIXEL_SIZE = 0.25
-    local GRIP_ROW = 11
-    local GRIP_COL = 6.5
-
-    local BLADE_COLORS = {
-        wood_sword    = Color3.fromRGB(139, 90, 43),
-        stone_sword   = Color3.fromRGB(130, 130, 130),
-        iron_sword    = Color3.fromRGB(195, 195, 195),
-        diamond_sword = Color3.fromRGB(95, 210, 230),
-        emerald_sword = Color3.fromRGB(75, 215, 115),
-    }
-
-    local EDGE_COLOR = Color3.fromRGB(55, 55, 55)
-    local GUARD_COLOR = Color3.fromRGB(35, 35, 35)
-    local HANDLE_COLOR = Color3.fromRGB(100, 70, 45)
-
-    local function isSwordModel(name)
-        for _, stype in SWORD_TYPES do
-            if name == stype then return true end
-        end
-        return false
-    end
-
-    local function lighten(c, amount)
-        local h, s, v = Color3.toHSV(c)
-        return Color3.fromHSV(h, math.max(0, s - amount * 0.5), math.min(1, v + amount))
-    end
-
-    local function darken(c, amount)
-        local h, s, v = Color3.toHSV(c)
-        return Color3.fromHSV(h, math.min(1, s + amount * 0.3), math.max(0, v - amount))
-    end
-
-    local function getPixelColor(cellType, stype, row, col)
-        local isLight = (row + col) % 2 == 0
-        if cellType == 1 then
-            local bc = BLADE_COLORS[stype] or Color3.fromRGB(18, 18, 18)
-            return isLight and lighten(bc, 0.18) or darken(bc, 0.18)
-        elseif cellType == 2 then
-            return isLight and lighten(EDGE_COLOR, 0.15) or darken(EDGE_COLOR, 0.15)
-        elseif cellType == 3 then
-            return isLight and lighten(GUARD_COLOR, 0.15) or darken(GUARD_COLOR, 0.15)
-        elseif cellType == 4 then
-            return isLight and lighten(HANDLE_COLOR, 0.15) or darken(HANDLE_COLOR, 0.15)
-        end
-        return Color3.fromRGB(18, 18, 18)
-    end
-
-    local function buildAstaSword(swordModel)
-        local stype = swordModel.Name
-        if not isSwordModel(stype) then return end
-
-        local handle = swordModel:FindFirstChild('Handle')
-        if not handle then return end
-
-        if pixelModels[swordModel] then return end
-
-        local parent = swordModel.Parent
-        local rightHand = parent and (parent:FindFirstChild('RightHand') or parent:FindFirstChild('Right Arm'))
-        local anchor = rightHand or handle
-        local baseOffset = CFrame.new()
-        if rightHand then
-            baseOffset = rightHand.CFrame:Inverse() * handle.CFrame
-            local gripShift = handle.Size.Y / 2 - 0.3
-            baseOffset = baseOffset * CFrame.new(0, -gripShift, 0)
-        end
-
-        local parts = {}
-        local suc = pcall(function()
-            for row = 1, #SWORD_PIXELS do
-                for col = 1, #SWORD_PIXELS[row] do
-                    local cellType = SWORD_PIXELS[row][col]
-                    if cellType > 0 then
-                        local pixel = Instance.new('Part')
-                        pixel.Name = '_AstaSword'
-                        pixel.Size = Vector3.new(PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE)
-                        pixel.Material = Enum.Material.SmoothPlastic
-                        pixel.Anchored = false
-                        pixel.CanCollide = false
-                        pixel.CanQuery = false
-                        pixel.CanTouch = false
-                        pixel.CastShadow = false
-                        pixel.TopSurface = Enum.SurfaceType.Smooth
-                        pixel.BottomSurface = Enum.SurfaceType.Smooth
-                        pixel.Color = getPixelColor(cellType, stype, row, col)
-                        pixel:SetAttribute('_PxType', cellType)
-                        pixel:SetAttribute('_PxRow', row)
-                        pixel:SetAttribute('_PxCol', col)
-
-                        local x = (col - GRIP_COL) * PIXEL_SIZE
-                        local y = (GRIP_ROW - row) * PIXEL_SIZE
-
-                        pixel.CFrame = anchor.CFrame * baseOffset * CFrame.new(x, y, 0)
-                        pixel.Parent = swordModel
-
-                        local weld = Instance.new('WeldConstraint')
-                        weld.Part0 = anchor
-                        weld.Part1 = pixel
-                        weld.Parent = pixel
-
-                        table.insert(parts, pixel)
-                    end
-                end
-            end
-        end)
-
-        if not suc or #parts == 0 then
-            for _, p in parts do
-                pcall(function() p:Destroy() end)
-            end
-            return
-        end
-
-        local hidden = {}
-        for _, part in swordModel:GetDescendants() do
-            if part:IsA('BasePart') and part.Name ~= '_AstaSword' then
-                hidden[part] = {type = 'transparency', value = part.Transparency}
-                part.Transparency = 1
-            elseif part:IsA('SurfaceAppearance') or part:IsA('Decal') or part:IsA('Texture') then
-                hidden[part] = {type = 'reparent', value = part.Parent}
-                part.Parent = nil
-            end
-        end
-        hiddenParts[swordModel] = hidden
-        pixelModels[swordModel] = parts
-
-        swordModel.Destroying:Once(function()
-            pixelModels[swordModel] = nil
-            hiddenParts[swordModel] = nil
-        end)
-    end
-
-    local function removeAstaSword(swordModel)
-        local parts = pixelModels[swordModel]
-        if parts then
-            for _, part in parts do
-                pcall(function() part:Destroy() end)
-            end
-            pixelModels[swordModel] = nil
-        end
-
-        local hidden = hiddenParts[swordModel]
-        if hidden then
-            for part, data in hidden do
-                pcall(function()
-                    if data.type == 'transparency' then
-                        part.Transparency = data.value
-                    elseif data.type == 'reparent' and data.value and data.value.Parent then
-                        part.Parent = data.value
-                    end
-                end)
-            end
-            hiddenParts[swordModel] = nil
-        end
-    end
-
-    local function scanParent(parent)
-        if not parent then return end
-        for _, child in parent:GetChildren() do
-            if isSwordModel(child.Name) then
-                pcall(buildAstaSword, child)
-            end
-        end
-    end
-
-    local function watchParent(parent)
-        if not parent then return end
-        AstaSword:Clean(parent.ChildAdded:Connect(function(child)
-            if not AstaSword.Enabled then return end
-            if isSwordModel(child.Name) then
-                task.defer(function()
-                    pcall(buildAstaSword, child)
-                end)
-            end
-        end))
-        AstaSword:Clean(parent.ChildRemoved:Connect(function(child)
-            if pixelModels[child] then
-                pixelModels[child] = nil
-                hiddenParts[child] = nil
-            end
-        end))
-    end
-
-    AstaSword = vape.Categories.Render:CreateModule({
-        Name = 'Asta Sword',
-        Tooltip = 'Replaces swords with Asta Demon Slayer pixel sword — blade color matches tier',
-        Function = function(callback)
-            if callback then
-                if lplr.Character then
-                    scanParent(lplr.Character)
-                    watchParent(lplr.Character)
-                end
-
-                AstaSword:Clean(lplr.CharacterAdded:Connect(function(char)
-                    if not AstaSword.Enabled then return end
-                    task.wait(0.5)
-                    if AstaSword.Enabled then
-                        scanParent(char)
-                        watchParent(char)
-                    end
-                end))
-
-                local cam = workspace.CurrentCamera
-                pcall(function()
-                    local vm = cam:FindFirstChild('Viewmodel')
-                    if vm then
-                        scanParent(vm)
-                        watchParent(vm)
-                    end
-                end)
-
-                AstaSword:Clean(cam.ChildAdded:Connect(function(child)
-                    if child.Name == 'Viewmodel' and AstaSword.Enabled then
-                        task.wait(0.1)
-                        scanParent(child)
-                        watchParent(child)
-                    end
-                end))
-
-                AstaSword:Clean(cam.DescendantAdded:Connect(function(v)
-                    if not AstaSword.Enabled then return end
-                    if v:IsA('Model') and isSwordModel(v.Name) then
-                        task.defer(function()
-                            pcall(buildAstaSword, v)
-                        end)
-                    end
-                end))
-            else
-                for model in table.clone(pixelModels) do
-                    removeAstaSword(model)
-                end
-            end
-        end
+    SwordScale = MannyX2:CreateToggle({
+        Name = 'Size Scale',
+        Default = false,
+    })
+    SwordGlow = MannyX2:CreateToggle({
+        Name = 'Glow Effect',
+        Default = false,
+    })
+    RandomSword = MannyX2:CreateToggle({
+        Name = 'Randomize On Respawn',
+        Default = false,
     })
 end)
-
 run(function()
     local StorageESP
     local List
@@ -9455,6 +9240,10 @@ run(function()
     	end,
     	Default = true
     })
+    ItemCount = StorageESP:CreateToggle({
+    	Name = 'Item Count',
+    	Default = true,
+    })
 end)
 
 run(function()
@@ -9583,6 +9372,7 @@ end)
 
 run(function()
     local PotESP
+    local AlertSpawn
 
     local Reference = {}
     local Folder = Instance.new('Folder')
@@ -9631,6 +9421,9 @@ run(function()
                 PotESP:Clean(workspace.DescendantAdded:Connect(function(v)
                     if v.Name == 'desert_pot' then
                         task.spawn(Added, v)
+                        if AlertSpawn and AlertSpawn.Enabled then
+                            notif('Pot ESP', 'Desert pot spawned!', 3)
+                        end
                     end
                 end))
                 PotESP:Clean(workspace.DescendantRemoving:Connect(Removing))
@@ -9663,6 +9456,10 @@ run(function()
             end
         end,
         Tooltip = 'Shows desert pots with distance'
+    })
+    AlertSpawn = PotESP:CreateToggle({
+        Name = 'Alert On Spawn',
+        Default = false,
     })
 end)
 
@@ -13379,89 +13176,6 @@ run(function()
         Default = 100,
         Suffix = 'ms',
         Tooltip = 'Delay before AutoPatch places a replacement block; 0 for instant'
-    })
-end)
-
-run(function()
-    local RankLookup
-    local Usernames
-
-    RankLookup = vape.Categories.Render:CreateModule({
-        Name = 'Rank Lookup',
-        Tooltip = 'Look up any player\'s rank and RP by username'
-    })
-
-    Usernames = RankLookup:CreateTextList({
-        Name = 'Usernames',
-    })
-
-    RankLookup:CreateButton({
-        Name = 'Lookup',
-        Tooltip = 'Fetch rank for each username in the list above',
-        Function = function()
-            local list = Usernames.ListEnabled
-            if #list == 0 then
-                notif('Rank Lookup', 'Add at least one username to the list', 4, 'alert')
-                return
-            end
-            task.spawn(function()
-                local okRD, RD = pcall(function()
-                    return require(replicatedStorage.TS.rank['rank-distribution']).RankDistribution
-                end)
-                for _, username in list do
-                    local ok2, result, division, exactRP, meta, rankName, shortName, rpDisplay, display
-                    local ok, userId = pcall(game.Players.GetUserIdFromNameAsync, game.Players, username)
-                    if not ok or not userId then
-                        notif('Rank Lookup', username .. ': player not found', 4, 'alert')
-                        continue
-                    end
-                    ok2, result = pcall(function()
-                        return bedwars.Client:Get('FetchRanks'):CallServer({userId})
-                    end)
-                    division = nil
-                    exactRP = nil
-                    if ok2 and typeof(result) == 'table' and result[1] then
-                        division = result[1].rankDivision
-                    end
-                    -- Fallback for local player: derive division + exact RP from Store
-                    if not division and userId == lplr.UserId and okRD and RD then
-                        local okS, state = pcall(function() return bedwars.Store:getState() end)
-                        if okS and state and state.Leaderboard and state.Leaderboard.rankStats then
-                            local storeRP = state.Leaderboard.rankStats.rankPoints
-                            if type(storeRP) == 'number' and storeRP > 0 then
-                                exactRP = storeRP
-                                for div = 25, 1, -1 do
-                                    local okF, floor = pcall(function() return RD.getRankPointsFromDivision(RD, div) end)
-                                    if okF and type(floor) == 'number' and storeRP >= floor then
-                                        division = div
-                                        break
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    if not division then
-                        notif('Rank Lookup', username .. ': unranked or not in this server', 5, 'info')
-                        continue
-                    end
-                    meta = bedwars.RankMeta[division]
-                    rankName = meta and meta.name or ('Division ' .. tostring(division))
-                    shortName = meta and meta.shortName
-                    rpDisplay = nil
-                    if exactRP then
-                        rpDisplay = tostring(exactRP) .. ' RP'
-                    elseif okRD and RD then
-                        local ok3, floor = pcall(function() return RD.getRankPointsFromDivision(RD, division) end)
-                        if ok3 and type(floor) == 'number' then rpDisplay = tostring(floor) .. '+ RP' end
-                    end
-                    display = rankName .. (shortName and ' (' .. shortName .. ')' or '')
-                    if rpDisplay then
-                        display = display .. ' | ' .. rpDisplay
-                    end
-                    notif('Rank Lookup', username .. ' — ' .. display, 8, 'info')
-                end
-            end)
-        end
     })
 end)
 
