@@ -931,6 +931,31 @@ run(function()
 			}
 		end
 	})
+	store.enchantNames = setmetatable({}, {
+		__index = function(self, plr)
+			return {
+				async = function()
+					if plr and plr.Character then
+						for i in plr.Character:GetAttributes() do
+							if i:find('StatusEffect_') and not i:find('_stacks') then
+								local name = bedwars.StatusEffectMeta[({i:gsub('StatusEffect_', '')})[1]]
+								if bedwars.StatusEffectMeta[name] then
+									name = bedwars.StatusEffectMeta[name]
+									for num = 1, 3 do
+										name = name:gsub(`_{num}`, '')
+									end
+									if bedwars.EnchantMeta[name] then
+										return name
+									end
+								end
+							end
+						end
+					end
+					return nil
+				end,
+			}
+		end
+	})
 
 	local function createMethodHook(object, method)
 		local original = object[method]
@@ -7614,6 +7639,10 @@ run(function()
     local Folder = Instance.new('Folder')
     Folder.Parent = vape.gui
     local methodused
+    local function formatRankDiv(div)
+    	if not div then return nil end
+    	return div:gsub('_', ' '):gsub('(%a+)', function(w) return w:sub(1,1):upper()..w:sub(2) end)
+    end
 
     local Added = {
     	Normal = function(ent)
@@ -7739,6 +7768,33 @@ run(function()
     		nametag.Text.Text = Strings[ent]
     		nametag.Text.Color = entitylib.getEntityColor(ent) or Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
     		nametag.BG.Size = Vector2.new(nametag.Text.TextBounds.X + 8, nametag.Text.TextBounds.Y + 7)
+    		if Rank.Enabled and ent.Player then
+    			local rankLabel = Drawing.new('Text')
+    			rankLabel.Size = 13 * Scale.Value
+    			rankLabel.Font = 0
+    			rankLabel.Color = Color3.fromRGB(255, 215, 0)
+    			rankLabel.Visible = false
+    			rankLabel.ZIndex = 2
+    			rankLabel.Text = ''
+    			nametag.Rank = rankLabel
+    			task.spawn(function()
+    				local div = store.rank[ent.Player]:async()
+    				local txt = formatRankDiv(div)
+    				if txt and nametag.Rank then
+    					nametag.Rank.Text = txt
+    				end
+    			end)
+    		end
+    		if Enchant.Enabled and ent.Player then
+    			local enchantLabel = Drawing.new('Text')
+    			enchantLabel.Size = 13 * Scale.Value
+    			enchantLabel.Font = 0
+    			enchantLabel.Color = Color3.fromRGB(100, 200, 255)
+    			enchantLabel.Visible = false
+    			enchantLabel.ZIndex = 2
+    			enchantLabel.Text = store.enchantNames[ent.Player]:async() or ''
+    			nametag.Enchant = enchantLabel
+    		end
     		Reference[ent] = nametag
     	end,
     }
@@ -7840,6 +7896,9 @@ run(function()
 
     			nametag.BG.Size = Vector2.new(nametag.Text.TextBounds.X + 8, nametag.Text.TextBounds.Y + 7)
     			nametag.Text.Color = entitylib.getEntityColor(ent) or Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
+    			if Enchant.Enabled and nametag.Enchant and ent.Player then
+    				nametag.Enchant.Text = store.enchantNames[ent.Player]:async() or ''
+    			end
     		end
     	end,
     }
@@ -7916,6 +7975,8 @@ run(function()
     				if distance < DistanceLimit.ValueMin or distance > DistanceLimit.ValueMax then
     					nametag.Text.Visible = false
     					nametag.BG.Visible = false
+    					if nametag.Rank then nametag.Rank.Visible = false end
+    					if nametag.Enchant then nametag.Enchant.Visible = false end
     					continue
     				end
     			end
@@ -7923,6 +7984,8 @@ run(function()
     			headPos, headVis = gameCamera:WorldToViewportPoint(ent.RootPart.Position + Vector3.new(0, ent.HipHeight + 1, 0))
     			nametag.Text.Visible = headVis
     			nametag.BG.Visible = headVis
+    			if nametag.Rank then nametag.Rank.Visible = headVis and nametag.Rank.Text ~= '' end
+    			if nametag.Enchant then nametag.Enchant.Visible = headVis and nametag.Enchant.Text ~= '' end
     			if not headVis then
     				continue
     			end
@@ -7937,6 +8000,12 @@ run(function()
     			end
     			nametag.BG.Position = Vector2.new(headPos.X - (nametag.BG.Size.X / 2), headPos.Y - nametag.BG.Size.Y)
     			nametag.Text.Position = nametag.BG.Position + Vector2.new(4, 3)
+    			if nametag.Rank and nametag.Rank.Visible then
+    				nametag.Rank.Position = Vector2.new(nametag.BG.Position.X + nametag.BG.Size.X + 4, nametag.BG.Position.Y)
+    			end
+    			if nametag.Enchant and nametag.Enchant.Visible then
+    				nametag.Enchant.Position = Vector2.new(nametag.BG.Position.X - nametag.Enchant.TextBounds.X - 4, nametag.BG.Position.Y)
+    			end
     		end
     	end,
     }
