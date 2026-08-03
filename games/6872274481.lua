@@ -8072,7 +8072,6 @@ run(function()
     			Folder:ClearAllChildren()
     		end
     	end,
-    	end,
     	Tooltip = 'ESP for certain kit related objects'
     })
     Background = KitESP:CreateToggle({
