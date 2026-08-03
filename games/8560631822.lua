@@ -1,4 +1,4 @@
-local _isfile = isfile or function(f) local ok, r = pcall(readfile, f); return ok and r ~= nil and r ~= '' end
+local function _isfile(f) local ok, r = pcall(readfile, f); return ok and r ~= nil and r ~= '' end
 local commit = _isfile('levi_shakingrass/profiles/commit.txt') and readfile('levi_shakingrass/profiles/commit.txt') or 'main'
 local target = 'levi_shakingrass/games/6872274481.lua'
 if not _isfile(target) then
