@@ -5787,7 +5787,10 @@ function mainapi:Load(skipgui, profile)
 		button.BackgroundColor3 = Color3.new(1, 1, 1)
 		button.BackgroundTransparency = hide and 1 or 0
 		button.Text = ''
-		button.Parent = game.GameId == 2619619496 and cloneref(game:GetService('Players')).LocalPlayer.PlayerGui.TopBarAppGui.TopBarApp or gui
+		do
+			local topBar = game.GameId == 2619619496 and cloneref(game:GetService('Players')).LocalPlayer.PlayerGui:FindFirstChild('TopBarAppGui')
+			button.Parent = (topBar and topBar:FindFirstChild('TopBarApp')) or gui
+		end
 		local image = Instance.new('ImageLabel')
 		image.AnchorPoint = Vector2.new(0.5, 0.5)
 		image.Size = UDim2.fromOffset(28, 28)
