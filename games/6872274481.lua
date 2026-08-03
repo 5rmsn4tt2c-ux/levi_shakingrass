@@ -12960,7 +12960,7 @@ end)
 
 run(function()
     local AutoTool
-    local old, event
+    local old
     
     local function switchHotbarItem(block)
         if block and not block:GetAttribute('NoBreak') and not block:GetAttribute('Team'..(lplr:GetAttribute('Team') or 0)..'NoBreak') then
@@ -12971,9 +12971,7 @@ run(function()
                 end
     
                 if hotbarSwitch(slot) then
-                    if inputService:IsMouseButtonPressed(0) then 
-                        event:Fire() 
-                    end
+                    contextActionService:CallFunction('block-break', Enum.UserInputState.End, newproxy(true))
                     return true
                 end
             end
@@ -12984,11 +12982,6 @@ run(function()
         Name = 'Auto Tool',
         Function = function(callback)
             if callback then
-                event = Instance.new('BindableEvent')
-                AutoTool:Clean(event)
-                AutoTool:Clean(event.Event:Connect(function()
-                    contextActionService:CallFunction('block-break', Enum.UserInputState.Begin, newproxy(true))
-                end))
                 old = bedwars.BlockBreaker.hitBlock
                 bedwars.BlockBreaker.hitBlock = function(self, maid, raycastparams, ...)
                     local block = self.clientManager:getBlockSelector():getMouseInfo(1, {ray = raycastparams})
@@ -13206,6 +13199,7 @@ run(function()
     local Layers
     local PlaceHz
     local AutoPatch
+    local AutoPatchRange
     local ProtectedLayers
     local PlacementSpeed
 
@@ -13289,7 +13283,7 @@ run(function()
                     local worldPos = data.blockRef.blockPosition * 3
                     local bed = getBedNear()
                     if not bed then return end
-                    if (worldPos - bed.Position).Magnitude > PlaceRange.Value then return end
+                    if (entitylib.character.RootPart.Position - worldPos).Magnitude > AutoPatchRange.Value then return end
                     if not isWithinProtectedLayers(worldPos, bed) then return end
                     if getPlacedBlock(worldPos) then return end
 
@@ -13344,6 +13338,9 @@ run(function()
                                 end
                                 pos = (bed.CFrame * CFrame.new(pos)).Position
                                 if getPlacedBlock(pos) then
+                                    continue
+                                end
+                                if entitylib.isAlive and (entitylib.character.RootPart.Position - pos).Magnitude > PlaceRange.Value then
                                     continue
                                 end
                                 if hotbar and hotbarSwitch(hotbar) then
@@ -13417,6 +13414,14 @@ run(function()
         Default = false,
         Tooltip = 'When enabled, automatically replaces blocks broken by enemies within the protected layers'
     })
+    AutoPatchRange = BedProtector:CreateSlider({
+        Name = 'AutoPatch Range',
+        Min = 1,
+        Max = 40,
+        Default = 15,
+        Suffix = 'studs',
+        Tooltip = 'How far from your character AutoPatch will replace broken blocks'
+    })
     ProtectedLayers = BedProtector:CreateSlider({
         Name = 'Protected Layers',
         Min = 1,
@@ -13433,7 +13438,9 @@ run(function()
         Suffix = 'ms',
         Tooltip = 'Delay in milliseconds before AutoPatch places a replacement block; 0 for instant'
     })
+end)
 
+run(function()
     local HiveProtector
     local HiveProtectRange
     local HiveLayers
@@ -13612,6 +13619,7 @@ run(function()
     local LimitItem
     local UseBlacklist
     local Blacklist
+    local Hole
     
     local function isBlacklisted(itemType)
     	return UseBlacklist and UseBlacklist.Enabled and Blacklist and table.find(Blacklist.ListEnabled, itemType)
@@ -13630,7 +13638,9 @@ run(function()
     		return blocks
     	end
     
-    	for _, item in store.inventory.inventory.items do
+    	for _, slot in store.inventory.hotbar do
+    		local item = slot.item
+    		if not item then continue end
     		local itemType = item.itemType
     		local meta = itemType and bedwars.ItemMeta[itemType]
     		local block = meta and meta.block
@@ -13847,6 +13857,45 @@ run(function()
     		'tnt',
     		'siege_tnt',
     	},
+    })
+    Hole = BlockIn:CreateToggle({
+    	Name = 'Hole',
+    	Tooltip = 'Walks you into a gap at the enemy bed with 0 knockback',
+    	Function = function(callback)
+    		if not callback then return end
+    		task.spawn(function()
+    			repeat
+    				if entitylib.isAlive then
+    					local myTeam = lplr:GetAttribute('Team')
+    					local selfpos = entitylib.character.RootPart.Position
+    					local enemyBed = nil
+    					for _, v in collectionService:GetTagged('bed') do
+    						local bedTeam = v:GetAttribute('Team')
+    						if bedTeam and bedTeam ~= myTeam and (selfpos - v.Position).Magnitude <= 25 then
+    							enemyBed = v
+    							break
+    						end
+    					end
+    					if enemyBed then
+    						for _, dir in {
+    							Vector3.new(3, 0, 0), Vector3.new(-3, 0, 0),
+    							Vector3.new(0, 0, 3), Vector3.new(0, 0, -3),
+    							Vector3.new(3, 0, 3), Vector3.new(-3, 0, 3),
+    							Vector3.new(3, 0, -3), Vector3.new(-3, 0, -3),
+    						} do
+    							local pos = enemyBed.Position + dir
+    							if not getPlacedBlock(pos) then
+    								entitylib.character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+    								lplr.Character.Humanoid:MoveTo(Vector3.new(pos.X, selfpos.Y, pos.Z))
+    								break
+    							end
+    						end
+    					end
+    				end
+    				task.wait(0.05)
+    			until not Hole.Enabled
+    		end)
+    	end,
     })
 end)
 
