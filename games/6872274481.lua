@@ -9890,6 +9890,7 @@ run(function()
 
 	CleanRecord = vape.Categories.Render:CreateModule({
 		Name = 'Clean Record',
+		Default = true,
 		Tooltip = 'Hides all GUI and notifications during Roblox recordings',
 		Function = function(callback)
 			if callback then
