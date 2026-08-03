@@ -9844,6 +9844,60 @@ run(function()
     })
 end)
 
+run(function()
+	local savedStates = {}
+	local pgChildConn = nil
+
+	local function hideAllGui()
+		pcall(function()
+			vape.gui.Enabled = false
+			local pg = lplr:FindFirstChild('PlayerGui')
+			if not pg then return end
+			savedStates = {}
+			for _, obj in pg:GetChildren() do
+				if obj:IsA('ScreenGui') then
+					savedStates[obj] = obj.Enabled
+					obj.Enabled = false
+				elseif obj:IsA('GuiBase2d') then
+					savedStates[obj] = obj.Visible
+					obj.Visible = false
+				end
+			end
+			if pgChildConn then pgChildConn:Disconnect() end
+			pgChildConn = pg.ChildAdded:Connect(function(child)
+				if child:IsA('ScreenGui') then
+					savedStates[child] = child.Enabled
+					child.Enabled = false
+				end
+			end)
+		end)
+	end
+
+	local function restoreAllGui()
+		pcall(function()
+			vape.gui.Enabled = true
+			if pgChildConn then pgChildConn:Disconnect(); pgChildConn = nil end
+			for obj, state in savedStates do
+				if obj and obj.Parent then
+					if obj:IsA('ScreenGui') then obj.Enabled = state
+					elseif obj:IsA('GuiBase2d') then obj.Visible = state end
+				end
+			end
+			savedStates = {}
+		end)
+	end
+
+	pcall(function()
+		local vrs = game:GetService('VideoRecordingService')
+		vrs.RecordingStarted:Connect(function()
+			hideAllGui()
+		end)
+		vrs.RecordingStopped:Connect(function()
+			restoreAllGui()
+		end)
+	end)
+end)
+
 --[[
     Utility
 ]]
