@@ -6174,6 +6174,12 @@ run(function()
 	local Background
 	local DrawingToggle
 	local Reference = {}
+	local Folder = Instance.new('Folder')
+	Folder.Parent = vape.gui
+	local CoverageFolder = Instance.new('Folder')
+	CoverageFolder.Parent = vape.gui
+	local CoverageRef = {}
+	local CoverageConnections = {}
 
 	local function Added(ent)
 		if Reference[ent] then return end
@@ -6205,43 +6211,115 @@ run(function()
 			Reference[ent] = {mode = 'drawing', bg = bg, title = title, info = info}
 		else
 			local card = Instance.new('Frame')
-			card.BackgroundColor3 = Color3.new(0, 0, 0)
+			card.AnchorPoint = Vector2.new(0.5, 1)
+			card.BackgroundColor3 = Color3.new()
 			card.BackgroundTransparency = Background and Background.Enabled and 0.35 or 1
 			card.BorderSizePixel = 0
 			card.AutomaticSize = Enum.AutomaticSize.XY
-			card.AnchorPoint = Vector2.new(0.5, 1)
-			card.Position = UDim2.fromOffset(0, 0)
 			card.Visible = false
-			local corner = Instance.new('UICorner', card)
-			corner.CornerRadius = UDim.new(0, 4)
-			local pad = Instance.new('UIPadding', card)
-			pad.PaddingLeft = UDim.new(0, 6)
-			pad.PaddingRight = UDim.new(0, 6)
-			pad.PaddingTop = UDim.new(0, 3)
-			pad.PaddingBottom = UDim.new(0, 3)
-			local layout = Instance.new('UIListLayout', card)
-			layout.SortOrder = Enum.SortOrder.LayoutOrder
-			layout.FillDirection = Enum.FillDirection.Vertical
-			layout.Padding = UDim.new(0, 2)
-			local titleLabel = Instance.new('TextLabel', card)
-			titleLabel.Text = Name .. "'s Beehive"
-			titleLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
-			titleLabel.Font = Enum.Font.Code
-			titleLabel.TextSize = 11
-			titleLabel.BackgroundTransparency = 1
-			titleLabel.AutomaticSize = Enum.AutomaticSize.XY
-			titleLabel.LayoutOrder = 1
-			local infoLabel = Instance.new('TextLabel', card)
-			infoLabel.Text = '0 Bees  0m'
-			infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-			infoLabel.Font = Enum.Font.Code
-			infoLabel.TextSize = 10
-			infoLabel.BackgroundTransparency = 1
-			infoLabel.AutomaticSize = Enum.AutomaticSize.XY
-			infoLabel.LayoutOrder = 2
-			card.Parent = vape.gui
-			Reference[ent] = {mode = 'normal', card = card, info = infoLabel}
+			local cardCorner = Instance.new('UICorner')
+			cardCorner.CornerRadius = UDim.new(0, 4)
+			cardCorner.Parent = card
+			local cardPadding = Instance.new('UIPadding')
+			cardPadding.PaddingLeft = UDim.new(0, 6)
+			cardPadding.PaddingRight = UDim.new(0, 6)
+			cardPadding.PaddingTop = UDim.new(0, 3)
+			cardPadding.PaddingBottom = UDim.new(0, 3)
+			cardPadding.Parent = card
+			local cardLayout = Instance.new('UIListLayout')
+			cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			cardLayout.Padding = UDim.new(0, 1)
+			cardLayout.Parent = card
+			local title = Instance.new('TextLabel')
+			title.Name = 'Title'
+			title.AutomaticSize = Enum.AutomaticSize.XY
+			title.BackgroundTransparency = 1
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 9
+			title.TextColor3 = Color3.fromRGB(255, 200, 50)
+			title.Text = Name .. "'s Beehive"
+			title.LayoutOrder = 1
+			title.Parent = card
+			local info = Instance.new('TextLabel')
+			info.Name = 'Info'
+			info.AutomaticSize = Enum.AutomaticSize.XY
+			info.BackgroundTransparency = 1
+			info.Font = Enum.Font.GothamBold
+			info.TextSize = 8
+			info.TextColor3 = Color3.fromRGB(200, 200, 200)
+			info.RichText = true
+			info.LayoutOrder = 2
+			info.Parent = card
+			card.Parent = Folder
+			Reference[ent] = {mode = 'normal', card = card}
+			if CoveragePlate and CoveragePlate.Enabled then
+				addCoveragePlate(ent)
+			end
 		end
+	end
+
+	local function removeCoveragePlate(ent)
+		if CoverageRef[ent] then
+			pcall(function() CoverageRef[ent]:Destroy() end)
+			CoverageRef[ent] = nil
+		end
+		if CoverageConnections[ent] then
+			for _, c in CoverageConnections[ent] do pcall(function() c:Disconnect() end) end
+			CoverageConnections[ent] = nil
+		end
+	end
+
+	local function addCoveragePlate(ent)
+		removeCoveragePlate(ent)
+		local plate = Instance.new('BillboardGui')
+		plate.Size = UDim2.fromOffset(18, 18)
+		plate.StudsOffset = Vector3.new(0, 3, 0)
+		plate.AlwaysOnTop = true
+		plate.Adornee = ent
+		local covered = 0
+		for _, side in sides do
+			local b = getPlacedBlock(ent.Position + side)
+			if b then covered = covered + 1 end
+		end
+		local label = Instance.new('TextLabel')
+		label.Size = UDim2.fromScale(1, 1)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 9
+		label.TextColor3 = Color3.fromRGB(255, 220, 80)
+		label.Text = covered .. '/6'
+		label.Parent = plate
+		plate.Parent = CoverageFolder
+		CoverageRef[ent] = plate
+		local conns = {}
+		conns[1] = vapeEvents.PlaceBlockEvent.Event:Connect(function(pos)
+			local found = false
+			for _, side in sides do
+				if (ent.Position + side - pos).Magnitude < 0.5 then found = true break end
+			end
+			if found then
+				covered = 0
+				for _, side in sides do
+					if getPlacedBlock(ent.Position + side) then covered = covered + 1 end
+				end
+				label.Text = covered .. '/6'
+			end
+		end)
+		conns[2] = vapeEvents.BreakBlockEvent.Event:Connect(function(pos)
+			local found = false
+			for _, side in sides do
+				if (ent.Position + side - pos).Magnitude < 0.5 then found = true break end
+			end
+			if found then
+				covered = 0
+				for _, side in sides do
+					if getPlacedBlock(ent.Position + side) then covered = covered + 1 end
+				end
+				label.Text = covered .. '/6'
+			end
+		end)
+		CoverageConnections[ent] = conns
 	end
 
 	local function Removing(ent)
@@ -6256,6 +6334,7 @@ run(function()
 			end
 			Reference[ent] = nil
 		end
+		removeCoveragePlate(ent)
 	end
 
 	HiveESP = vape.Categories.Render:CreateModule({
@@ -6291,19 +6370,21 @@ run(function()
 						else
 							obj.card.Visible = headVis
 							if headVis then
-								obj.info.Text = infoText
-								local sz = obj.card.AbsoluteSize
-								if sz.X > 0 then
-									obj.card.Position = UDim2.fromOffset(headPos.X - sz.X / 2, headPos.Y - sz.Y)
-								end
+								obj.card.Info.Text = level .. ' Bee' .. (level >= 2 and 's' or '') .. '  <font color="rgb(130,130,130)">' .. dist .. 'm</font>'
+								obj.card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
 							end
 						end
 					end
 				end))
 			else
-				for i in Reference do
-					Removing(i)
+				for ent in pairs(Reference) do
+					Removing(ent)
 				end
+				for ent in pairs(CoverageRef) do
+					removeCoveragePlate(ent)
+				end
+				pcall(function() Folder:ClearAllChildren() end)
+				pcall(function() CoverageFolder:ClearAllChildren() end)
 			end
 		end,
 		Tooltip = 'Renders hives locations and info'
@@ -6333,6 +6414,19 @@ run(function()
 		Name = 'Coverage Plate',
 		Default = false,
 		Tooltip = 'Shows plate indicator of block coverage like bed plate',
+		Function = function(call)
+			if call then
+				for ent, obj in Reference do
+					if obj.mode == 'normal' then
+						addCoveragePlate(ent)
+					end
+				end
+			else
+				for ent in pairs(CoverageRef) do
+					removeCoveragePlate(ent)
+				end
+			end
+		end
 	})
 end)
 
@@ -7381,6 +7475,8 @@ run(function()
 	local WhitelistOnly
 	local Whitelist = {ListEnabled = {}, Object = nil}
 	local Reference = {}
+	local Folder = Instance.new('Folder')
+	Folder.Parent = vape.gui
 
 	local function Added(ent)
 		if Reference[ent] then return end
@@ -7415,40 +7511,48 @@ run(function()
 			Reference[ent] = {mode = 'drawing', bg = bg, title = title, info = info}
 		else
 			local card = Instance.new('Frame')
-			card.BackgroundColor3 = Color3.new(0, 0, 0)
+			card.AnchorPoint = Vector2.new(0.5, 1)
+			card.BackgroundColor3 = Color3.new()
 			card.BackgroundTransparency = Background and Background.Enabled and 0.35 or 1
 			card.BorderSizePixel = 0
 			card.AutomaticSize = Enum.AutomaticSize.XY
-			card.AnchorPoint = Vector2.new(0.5, 1)
-			card.Position = UDim2.fromOffset(0, 0)
 			card.Visible = false
-			local corner = Instance.new('UICorner', card)
-			corner.CornerRadius = UDim.new(0, 4)
-			local pad = Instance.new('UIPadding', card)
-			pad.PaddingLeft = UDim.new(0, 6); pad.PaddingRight = UDim.new(0, 6)
-			pad.PaddingTop = UDim.new(0, 3); pad.PaddingBottom = UDim.new(0, 3)
-			local layout = Instance.new('UIListLayout', card)
-			layout.SortOrder = Enum.SortOrder.LayoutOrder
-			layout.FillDirection = Enum.FillDirection.Vertical
-			layout.Padding = UDim.new(0, 2)
-			local titleLabel = Instance.new('TextLabel', card)
-			titleLabel.Text = Name
-			titleLabel.TextColor3 = Color3.new(1, 1, 1)
-			titleLabel.Font = Enum.Font.Code
-			titleLabel.TextSize = 11
-			titleLabel.BackgroundTransparency = 1
-			titleLabel.AutomaticSize = Enum.AutomaticSize.XY
-			titleLabel.LayoutOrder = 1
-			local infoLabel = Instance.new('TextLabel', card)
-			infoLabel.Text = '0m'
-			infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-			infoLabel.Font = Enum.Font.Code
-			infoLabel.TextSize = 10
-			infoLabel.BackgroundTransparency = 1
-			infoLabel.AutomaticSize = Enum.AutomaticSize.XY
-			infoLabel.LayoutOrder = 2
-			card.Parent = vape.gui
-			Reference[ent] = {mode = 'normal', card = card, info = infoLabel}
+			local cardCorner = Instance.new('UICorner')
+			cardCorner.CornerRadius = UDim.new(0, 4)
+			cardCorner.Parent = card
+			local cardPadding = Instance.new('UIPadding')
+			cardPadding.PaddingLeft = UDim.new(0, 6)
+			cardPadding.PaddingRight = UDim.new(0, 6)
+			cardPadding.PaddingTop = UDim.new(0, 3)
+			cardPadding.PaddingBottom = UDim.new(0, 3)
+			cardPadding.Parent = card
+			local cardLayout = Instance.new('UIListLayout')
+			cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			cardLayout.Padding = UDim.new(0, 1)
+			cardLayout.Parent = card
+			local title = Instance.new('TextLabel')
+			title.Name = 'Title'
+			title.AutomaticSize = Enum.AutomaticSize.XY
+			title.BackgroundTransparency = 1
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 9
+			title.TextColor3 = Color3.new(1, 1, 1)
+			title.Text = Name
+			title.LayoutOrder = 1
+			title.Parent = card
+			local info = Instance.new('TextLabel')
+			info.Name = 'Info'
+			info.AutomaticSize = Enum.AutomaticSize.XY
+			info.BackgroundTransparency = 1
+			info.Font = Enum.Font.GothamBold
+			info.TextSize = 8
+			info.TextColor3 = Color3.fromRGB(200, 200, 200)
+			info.RichText = true
+			info.LayoutOrder = 2
+			info.Parent = card
+			card.Parent = Folder
+			Reference[ent] = {mode = 'normal', card = card}
 		end
 	end
 
@@ -7501,11 +7605,8 @@ run(function()
 							local vis = ent.Parent and headVis or false
 							obj.card.Visible = vis
 							if vis then
-								obj.info.Text = infoText
-								local sz = obj.card.AbsoluteSize
-								if sz.X > 0 then
-									obj.card.Position = UDim2.fromOffset(headPos.X - sz.X / 2, headPos.Y - sz.Y)
-								end
+								obj.card.Info.Text = (amt >= 2 and 'x' .. amt .. '  ' or '') .. '<font color="rgb(130,130,130)">' .. dist .. 'm</font>'
+								obj.card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
 							end
 						end
 					end
@@ -7514,8 +7615,8 @@ run(function()
 					Added(v)
 				end
 			else
-				for i in Reference do
-					Removing(i)
+				for ent in pairs(Reference) do
+					Removing(ent)
 				end
 			end
 		end,
@@ -7858,27 +7959,50 @@ run(function()
     		Reference[v] = {mode = 'drawing', bg = bg, label = label, icon = icon}
     	else
     		local card = Instance.new('Frame')
-    		card.BackgroundColor3 = Color3.new(0, 0, 0)
+    		card.AnchorPoint = Vector2.new(0.5, 1)
+    		card.BackgroundColor3 = Color3.new()
     		card.BackgroundTransparency = Background.Enabled and 0.35 or 1
     		card.BorderSizePixel = 0
     		card.AutomaticSize = Enum.AutomaticSize.XY
-    		card.AnchorPoint = Vector2.new(0.5, 1)
-    		card.Position = UDim2.fromOffset(0, 0)
     		card.Visible = false
-    		local corner = Instance.new('UICorner', card)
-    		corner.CornerRadius = UDim.new(0, 4)
-    		local pad = Instance.new('UIPadding', card)
-    		pad.PaddingLeft = UDim.new(0, 6); pad.PaddingRight = UDim.new(0, 6)
-    		pad.PaddingTop = UDim.new(0, 3); pad.PaddingBottom = UDim.new(0, 3)
-    		local lbl = Instance.new('TextLabel', card)
-    		lbl.Text = icon .. ' • 0m'
-    		lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
-    		lbl.Font = Enum.Font.Code
-    		lbl.TextSize = math.floor(11 * s)
-    		lbl.BackgroundTransparency = 1
-    		lbl.AutomaticSize = Enum.AutomaticSize.XY
-    		card.Parent = vape.gui
-    		Reference[v] = {mode = 'normal', card = card, label = lbl, icon = icon}
+    		local cardCorner = Instance.new('UICorner')
+    		cardCorner.CornerRadius = UDim.new(0, 4)
+    		cardCorner.Parent = card
+    		local cardPadding = Instance.new('UIPadding')
+    		cardPadding.PaddingLeft = UDim.new(0, 6)
+    		cardPadding.PaddingRight = UDim.new(0, 6)
+    		cardPadding.PaddingTop = UDim.new(0, 3)
+    		cardPadding.PaddingBottom = UDim.new(0, 3)
+    		cardPadding.Parent = card
+    		local cardLayout = Instance.new('UIListLayout')
+    		cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    		cardLayout.FillDirection = Enum.FillDirection.Horizontal
+    		cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    		cardLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    		cardLayout.Padding = UDim.new(0, 4)
+    		cardLayout.Parent = card
+    		local iconLabel = Instance.new('TextLabel')
+    		iconLabel.Name = 'Icon'
+    		iconLabel.AutomaticSize = Enum.AutomaticSize.XY
+    		iconLabel.BackgroundTransparency = 1
+    		iconLabel.Font = Enum.Font.GothamBold
+    		iconLabel.TextSize = math.floor(9 * s)
+    		iconLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
+    		iconLabel.Text = icon
+    		iconLabel.LayoutOrder = 1
+    		iconLabel.Parent = card
+    		local infoLbl = Instance.new('TextLabel')
+    		infoLbl.Name = 'Info'
+    		infoLbl.AutomaticSize = Enum.AutomaticSize.XY
+    		infoLbl.BackgroundTransparency = 1
+    		infoLbl.Font = Enum.Font.GothamBold
+    		infoLbl.TextSize = math.floor(9 * s)
+    		infoLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    		infoLbl.RichText = true
+    		infoLbl.LayoutOrder = 2
+    		infoLbl.Parent = card
+    		card.Parent = Folder
+    		Reference[v] = {mode = 'normal', card = card, icon = icon}
     	end
     end
 
@@ -7937,19 +8061,17 @@ run(function()
     					else
     						ref.card.Visible = headVis
     						if headVis then
-    							ref.label.Text = infoText
-    							local sz = ref.card.AbsoluteSize
-    							if sz.X > 0 then
-    								ref.card.Position = UDim2.fromOffset(headPos.X - sz.X / 2, headPos.Y - sz.Y)
-    							end
+    							ref.card.Info.Text = '<font color="rgb(130,130,130)">' .. dist .. 'm</font>'
+    							ref.card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
     						end
     					end
     				end
     			end))
     		else
-    			for v in Reference do Removing(v) end
+    			for v in pairs(Reference) do Removing(v) end
     			Folder:ClearAllChildren()
     		end
+    	end,
     	end,
     	Tooltip = 'ESP for certain kit related objects'
     })
@@ -7958,7 +8080,7 @@ run(function()
     	Function = function(callback)
     		for _, ref in Reference do
     			if ref.mode == 'drawing' then
-    				ref.bg.Transparency = callback and 0.65 or 0
+    				ref.bg.Transparency = callback and 0.65 or 1
     			else
     				ref.card.BackgroundTransparency = callback and 0.35 or 1
     			end
@@ -7982,7 +8104,12 @@ run(function()
     	Decimal = 10,
     	Function = function(val)
     		for _, ref in Reference do
-    			ref.label.Size = math.floor(9 * val)
+    			if ref.mode == 'drawing' then
+    				ref.label.Size = math.floor(9 * val)
+    			else
+    				ref.card.Icon.TextSize = math.floor(9 * val)
+    				ref.card.Info.TextSize = math.floor(9 * val)
+    			end
     		end
     	end
     })
@@ -8097,6 +8224,18 @@ run(function()
     				Icon.Position = UDim2.fromOffset(-30, -4)
     				Icon.BackgroundTransparency = 1
     				Icon.Image = store.enchants[ent.Player]:async() or ''
+    				Icon.Parent = nametag
+    			end
+    		end)
+    		task.spawn(function()
+    			if ShowKit and ShowKit.Enabled and ent.Player then
+    				local kit = ent.Player:GetAttribute('PlayingAsKit')
+    				local Icon = Instance.new('ImageLabel')
+    				Icon.Name = 'KitIcon'
+    				Icon.Size = UDim2.fromOffset(20, 20)
+    				Icon.Position = UDim2.fromOffset(size.X + 12, -2)
+    				Icon.BackgroundTransparency = 1
+    				Icon.Image = kit and bedwars.BedwarsKitMeta[kit] and bedwars.BedwarsKitMeta[kit].renderImage or ''
     				Icon.Parent = nametag
     			end
     		end)
@@ -8237,6 +8376,11 @@ run(function()
     				nametag.EnchantIcon.Image = store.enchants[ent.Player]:async() or ''
     			end
 
+    			if ShowKit and ShowKit.Enabled and ent.Player and nametag:FindFirstChild('KitIcon') then
+    				local kit = ent.Player:GetAttribute('PlayingAsKit')
+    				nametag.KitIcon.Image = kit and bedwars.BedwarsKitMeta[kit] and bedwars.BedwarsKitMeta[kit].renderImage or ''
+    			end
+
     			local size = getfontsize(removeTags(Strings[ent]), nametag.TextSize, nametag.FontFace, Vector2.new(100000, 100000))
     			nametag.Size = UDim2.fromOffset(size.X + 8, size.Y + 7)
     			nametag.Text = Strings[ent]
@@ -8325,6 +8469,9 @@ run(function()
     					)
     					nametag.Size = UDim2.fromOffset(ize.X + 8, ize.Y + 7)
     					Sizes[ent] = mag
+    					if nametag:FindFirstChild('KitIcon') then
+    						nametag.KitIcon.Position = UDim2.fromOffset(ize.X + 12, -2)
+    					end
     				end
     			end
     			nametag.Position = UDim2.fromOffset(headPos.X, headPos.Y)
@@ -8563,6 +8710,12 @@ run(function()
     ShowKit = NameTags:CreateToggle({
     	Name = 'Show Kit',
     	Default = false,
+    	Function = function()
+    		if NameTags.Enabled then
+    			NameTags:Toggle()
+    			NameTags:Toggle()
+    		end
+    	end,
     })
 end)
 
@@ -9292,6 +9445,8 @@ run(function()
 	local Reference = {}
 	local Enabled = {}
 	local Connections = {}
+	local Folder = Instance.new('Folder')
+	Folder.Parent = vape.gui
 
 	local function refreshAdornee(obj)
 		local ref = Reference[obj]
@@ -9314,7 +9469,12 @@ run(function()
 		if ironCount > 0 or diamondCount > 0 or emeraldCount > 0 then
 			Enabled[obj] = true
 		end
-		ref.info.Text = string.format('Fe:%d Di:%d Em:%d', ironCount, diamondCount, emeraldCount)
+		local infoText = string.format('Fe:%d Di:%d Em:%d', ironCount, diamondCount, emeraldCount)
+		if ref.mode == 'drawing' then
+			ref.info.Text = infoText
+		else
+			ref.card.Info.Text = infoText
+		end
 	end
 
 	local function Removing(v)
@@ -9353,7 +9513,7 @@ run(function()
 			local bg = Drawing.new('Square')
 			bg.Filled = true
 			bg.Color = Color3.new(0, 0, 0)
-			bg.Transparency = Background and Background.Enabled and 0.65 or 0.65
+			bg.Transparency = Background and Background.Enabled and 0.65 or 1
 			bg.ZIndex = 1
 			bg.Visible = false
 			local title = Drawing.new('Text')
@@ -9377,39 +9537,48 @@ run(function()
 			Reference[v] = {mode = 'drawing', bg = bg, title = title, info = info}
 		else
 			local card = Instance.new('Frame')
-			card.BackgroundColor3 = Color3.new(0, 0, 0)
+			card.AnchorPoint = Vector2.new(0.5, 1)
+			card.BackgroundColor3 = Color3.new()
 			card.BackgroundTransparency = Background and Background.Enabled and 0.35 or 1
 			card.BorderSizePixel = 0
 			card.AutomaticSize = Enum.AutomaticSize.XY
-			card.AnchorPoint = Vector2.new(0.5, 1)
-			card.Position = UDim2.fromOffset(0, 0)
 			card.Visible = false
-			local corner = Instance.new('UICorner', card)
-			corner.CornerRadius = UDim.new(0, 4)
-			local pad = Instance.new('UIPadding', card)
-			pad.PaddingLeft = UDim.new(0, 6); pad.PaddingRight = UDim.new(0, 6)
-			pad.PaddingTop = UDim.new(0, 3); pad.PaddingBottom = UDim.new(0, 3)
-			local layout = Instance.new('UIListLayout', card)
-			layout.SortOrder = Enum.SortOrder.LayoutOrder
-			layout.Padding = UDim.new(0, 1)
-			local titleLbl = Instance.new('TextLabel', card)
-			titleLbl.Text = 'Storage'
-			titleLbl.TextColor3 = Color3.fromRGB(180, 140, 255)
-			titleLbl.Font = Enum.Font.Code
-			titleLbl.TextSize = 11
-			titleLbl.BackgroundTransparency = 1
-			titleLbl.AutomaticSize = Enum.AutomaticSize.XY
-			titleLbl.LayoutOrder = 1
-			local infoLbl = Instance.new('TextLabel', card)
-			infoLbl.Text = ''
-			infoLbl.TextColor3 = Color3.fromRGB(220, 220, 220)
-			infoLbl.Font = Enum.Font.Code
-			infoLbl.TextSize = 10
-			infoLbl.BackgroundTransparency = 1
-			infoLbl.AutomaticSize = Enum.AutomaticSize.XY
-			infoLbl.LayoutOrder = 2
-			card.Parent = vape.gui
-			Reference[v] = {mode = 'normal', card = card, title = titleLbl, info = infoLbl}
+			local cardCorner = Instance.new('UICorner')
+			cardCorner.CornerRadius = UDim.new(0, 4)
+			cardCorner.Parent = card
+			local cardPadding = Instance.new('UIPadding')
+			cardPadding.PaddingLeft = UDim.new(0, 6)
+			cardPadding.PaddingRight = UDim.new(0, 6)
+			cardPadding.PaddingTop = UDim.new(0, 3)
+			cardPadding.PaddingBottom = UDim.new(0, 3)
+			cardPadding.Parent = card
+			local cardLayout = Instance.new('UIListLayout')
+			cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			cardLayout.Padding = UDim.new(0, 1)
+			cardLayout.Parent = card
+			local title = Instance.new('TextLabel')
+			title.Name = 'Title'
+			title.AutomaticSize = Enum.AutomaticSize.XY
+			title.BackgroundTransparency = 1
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 9
+			title.TextColor3 = Color3.fromRGB(180, 140, 255)
+			title.Text = 'Storage'
+			title.LayoutOrder = 1
+			title.Parent = card
+			local info = Instance.new('TextLabel')
+			info.Name = 'Info'
+			info.AutomaticSize = Enum.AutomaticSize.XY
+			info.BackgroundTransparency = 1
+			info.Font = Enum.Font.GothamBold
+			info.TextSize = 8
+			info.TextColor3 = Color3.fromRGB(220, 220, 220)
+			info.RichText = true
+			info.LayoutOrder = 2
+			info.Parent = card
+			card.Parent = Folder
+			Reference[v] = {mode = 'normal', card = card}
 		end
 		Enabled[v] = false
 		Connections[v] = {
@@ -9449,10 +9618,7 @@ run(function()
 						else
 							ref.card.Visible = show
 							if show then
-								local sz = ref.card.AbsoluteSize
-								if sz.X > 0 then
-									ref.card.Position = UDim2.fromOffset(headPos.X - sz.X / 2, headPos.Y - sz.Y)
-								end
+								ref.card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
 							end
 						end
 					end
@@ -9630,6 +9796,8 @@ run(function()
 	local AlertSpawn
 	local DrawingToggle
 	local Reference = {}
+	local Folder = Instance.new('Folder')
+	Folder.Parent = vape.gui
 
 	local function getPos(v)
 		if v:IsA('Model') then
@@ -9659,27 +9827,32 @@ run(function()
 			Reference[v] = {mode = 'drawing', bg = bg, txt = txt}
 		else
 			local card = Instance.new('Frame')
-			card.BackgroundColor3 = Color3.new(0, 0, 0)
+			card.AnchorPoint = Vector2.new(0.5, 1)
+			card.BackgroundColor3 = Color3.new()
 			card.BackgroundTransparency = 0.35
 			card.BorderSizePixel = 0
 			card.AutomaticSize = Enum.AutomaticSize.XY
-			card.AnchorPoint = Vector2.new(0.5, 1)
-			card.Position = UDim2.fromOffset(0, 0)
 			card.Visible = false
-			local corner = Instance.new('UICorner', card)
-			corner.CornerRadius = UDim.new(0, 4)
-			local pad = Instance.new('UIPadding', card)
-			pad.PaddingLeft = UDim.new(0, 5); pad.PaddingRight = UDim.new(0, 5)
-			pad.PaddingTop = UDim.new(0, 3); pad.PaddingBottom = UDim.new(0, 3)
-			local lbl = Instance.new('TextLabel', card)
-			lbl.Text = 'Pot • 0m'
-			lbl.TextColor3 = Color3.fromRGB(255, 210, 100)
-			lbl.Font = Enum.Font.Code
-			lbl.TextSize = 13
-			lbl.BackgroundTransparency = 1
-			lbl.AutomaticSize = Enum.AutomaticSize.XY
-			card.Parent = vape.gui
-			Reference[v] = {mode = 'normal', card = card, txt = lbl}
+			local cardCorner = Instance.new('UICorner')
+			cardCorner.CornerRadius = UDim.new(0, 4)
+			cardCorner.Parent = card
+			local cardPadding = Instance.new('UIPadding')
+			cardPadding.PaddingLeft = UDim.new(0, 6)
+			cardPadding.PaddingRight = UDim.new(0, 6)
+			cardPadding.PaddingTop = UDim.new(0, 3)
+			cardPadding.PaddingBottom = UDim.new(0, 3)
+			cardPadding.Parent = card
+			local info = Instance.new('TextLabel')
+			info.Name = 'Info'
+			info.AutomaticSize = Enum.AutomaticSize.XY
+			info.BackgroundTransparency = 1
+			info.Font = Enum.Font.GothamBold
+			info.TextSize = 12
+			info.TextColor3 = Color3.fromRGB(255, 210, 100)
+			info.RichText = true
+			info.Parent = card
+			card.Parent = Folder
+			Reference[v] = {mode = 'normal', card = card}
 		end
 	end
 
@@ -9741,11 +9914,8 @@ run(function()
 						else
 							obj.card.Visible = vis
 							if vis then
-								obj.txt.Text = label
-								local sz = obj.card.AbsoluteSize
-								if sz.X > 0 then
-									obj.card.Position = UDim2.fromOffset(screen.X - sz.X / 2, screen.Y - sz.Y)
-								end
+								obj.card.Info.Text = 'Pot • ' .. dist .. 'm'
+								obj.card.Position = UDim2.fromOffset(screen.X, screen.Y)
 							end
 						end
 					end
@@ -9756,7 +9926,7 @@ run(function()
 					end
 				end
 			else
-				for v in Reference do
+				for v in pairs(Reference) do
 					Removing(v)
 				end
 			end
