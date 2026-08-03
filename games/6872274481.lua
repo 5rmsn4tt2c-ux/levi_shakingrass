@@ -7101,148 +7101,134 @@ run(function()
 end)
 
 run(function()
-    local ItemESP
-    local Background
-    local WhitelistOnly
-    local Whitelist = {ListEnabled = {}, Object = nil}
+	local ItemESP
+	local Background
+	local WhitelistOnly
+	local Whitelist = {ListEnabled = {}, Object = nil}
+	local Reference = {}
 
-    local Folder = Instance.new('Folder')
-    Folder.Parent = vape.gui
+	local function Added(ent)
+		if Reference[ent] then return end
+		local Name = bedwars.ItemMeta[ent.Name] and bedwars.ItemMeta[ent.Name].displayName or ent.Name
+		if WhitelistOnly.Enabled and not table.find(Whitelist.ListEnabled, Name:lower()) then
+			return
+		end
+		local bg = Drawing.new('Square')
+		bg.Filled = true
+		bg.Color = Color3.new(0, 0, 0)
+		bg.Transparency = Background and Background.Enabled and 0.65 or 0.65
+		bg.ZIndex = 1
+		bg.Visible = false
+		local title = Drawing.new('Text')
+		title.Font = 2
+		title.Size = 9
+		title.Color = Color3.new(1, 1, 1)
+		title.Outline = true
+		title.OutlineColor = Color3.new(0, 0, 0)
+		title.Text = Name
+		title.ZIndex = 2
+		title.Visible = false
+		local info = Drawing.new('Text')
+		info.Font = 2
+		info.Size = 8
+		info.Color = Color3.fromRGB(200, 200, 200)
+		info.Outline = true
+		info.OutlineColor = Color3.new(0, 0, 0)
+		info.ZIndex = 2
+		info.Visible = false
+		Reference[ent] = {bg = bg, title = title, info = info}
+	end
 
-    local Reference = {}
+	local function Removing(ent)
+		if Reference[ent] then
+			pcall(function() Reference[ent].bg:Remove() end)
+			pcall(function() Reference[ent].title:Remove() end)
+			pcall(function() Reference[ent].info:Remove() end)
+			Reference[ent] = nil
+		end
+	end
 
-    local function Added(ent)
-    	local Name = bedwars.ItemMeta[ent.Name] and bedwars.ItemMeta[ent.Name].displayName or ent.Name
-    	if WhitelistOnly.Enabled and not table.find(Whitelist.ListEnabled, Name:lower()) then
-    		return
-    	end
-
-    	local card = Instance.new('Frame')
-    	card.Name = ent.Name
-    	card.AnchorPoint = Vector2.new(0.5, 1)
-    	card.BackgroundColor3 = Color3.new()
-    	card.BackgroundTransparency = Background.Enabled and 0.35 or 1
-    	card.BorderSizePixel = 0
-    	card.AutomaticSize = Enum.AutomaticSize.XY
-    	card.Visible = false
-    	local cardCorner = Instance.new('UICorner')
-    	cardCorner.CornerRadius = UDim.new(0, 4)
-    	cardCorner.Parent = card
-    	local cardPadding = Instance.new('UIPadding')
-    	cardPadding.PaddingLeft = UDim.new(0, 6)
-    	cardPadding.PaddingRight = UDim.new(0, 6)
-    	cardPadding.PaddingTop = UDim.new(0, 3)
-    	cardPadding.PaddingBottom = UDim.new(0, 3)
-    	cardPadding.Parent = card
-    	local cardLayout = Instance.new('UIListLayout')
-    	cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    	cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    	cardLayout.Padding = UDim.new(0, 1)
-    	cardLayout.Parent = card
-
-    	local title = Instance.new('TextLabel')
-    	title.Name = 'Title'
-    	title.AutomaticSize = Enum.AutomaticSize.XY
-    	title.BackgroundTransparency = 1
-    	title.Font = Enum.Font.GothamBold
-    	title.TextSize = 9
-    	title.TextColor3 = Color3.new(1, 1, 1)
-    	title.Text = Name
-    	title.LayoutOrder = 1
-    	title.Parent = card
-
-    	local info = Instance.new('TextLabel')
-    	info.Name = 'Info'
-    	info.AutomaticSize = Enum.AutomaticSize.XY
-    	info.BackgroundTransparency = 1
-    	info.Font = Enum.Font.GothamBold
-    	info.TextSize = 8
-    	info.TextColor3 = Color3.fromRGB(200, 200, 200)
-    	info.RichText = true
-    	info.LayoutOrder = 2
-    	info.Parent = card
-
-    	card.Parent = Folder
-    	Reference[ent] = card
-    end
-
-    local function Removing(ent)
-    	if Reference[ent] then
-    		Reference[ent]:Destroy()
-    		Reference[ent] = nil
-    	end
-    end
-
-    ItemESP = vape.Categories.Render:CreateModule({
-    	Name = 'Item ESP',
-    	Function = function(call)
-    		if call then
-    			ItemESP:Clean(collectionService:GetInstanceAddedSignal('ItemDrop'):Connect(Added))
-    			ItemESP:Clean(collectionService:GetInstanceRemovedSignal('ItemDrop'):Connect(Removing))
-    			ItemESP:Clean(runService.PreRender:Connect(function()
-    				for ent, card in Reference do
-    					local headPos, headVis
-    					if not ent.Parent then continue end
-    					headPos, headVis = gameCamera:WorldToViewportPoint(ent.Position + Vector3.new(0, 1, 0))
-    					card.Visible = headVis
-    					if headVis then
-    						local amt = ent:GetAttribute('Amount')
-    						local dist = entitylib.isAlive and math.floor((entitylib.character.RootPart.Position - ent.Position).Magnitude) or 0
-    						card.Info.Text = (amt >= 2 and 'x' .. amt .. '  ' or '') .. '<font color="rgb(130,130,130)">' .. dist .. 'm</font>'
-    						card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
-    					end
-    				end
-    			end))
-
-    			for _, v in collectionService:GetTagged('ItemDrop') do
-    				Added(v)
-    			end
-    		else
-    			for i in Reference do
-    				Removing(i)
-    			end
-    		end
-    	end,
-    	Tooltip = 'Renders tags dropped items'
-    })
-    Background = ItemESP:CreateToggle({
-    	Name = 'Background',
-    	Function = function(callback)
-    		for _, card in Reference do
-    			card.BackgroundTransparency = callback and 0.35 or 1
-    		end
-    	end,
-    	Default = true
-    })
-    ItemESP:CreateToggle({
-    	Name = 'Group items',
-    	Tooltip = 'Group items into easier to read tags'
-    })
-    WhitelistOnly = ItemESP:CreateToggle({
-    	Name = 'Whitelist Only',
-    	Tooltip = 'Only renders whitelisted items',
-    	Function = function(call)
-    		if Whitelist.Object then
-    			Whitelist.Object.Visible = call
-
-    			if ItemESP.Enabled then
-    				ItemESP:Toggle()
-    				ItemESP:Toggle()
-    			end
-    		end
-    	end
-    })
-    Whitelist = ItemESP:CreateTextList({
-    	Name = 'Allowed items',
-    	Visible = false,
-    	Darker = true,
-    	Function = function()
-    		if ItemESP.Enabled then
-    			ItemESP:Toggle()
-    			ItemESP:Toggle()
-    		end
-    	end
-    })
+	ItemESP = vape.Categories.Render:CreateModule({
+		Name = 'Item ESP',
+		Function = function(call)
+			if call then
+				ItemESP:Clean(collectionService:GetInstanceAddedSignal('ItemDrop'):Connect(Added))
+				ItemESP:Clean(collectionService:GetInstanceRemovedSignal('ItemDrop'):Connect(Removing))
+				ItemESP:Clean(runService.PreRender:Connect(function()
+					for ent, obj in Reference do
+						if not ent.Parent then
+							obj.bg.Visible = false
+							obj.title.Visible = false
+							obj.info.Visible = false
+							continue
+						end
+						local headPos, headVis = gameCamera:WorldToViewportPoint(ent.Position + Vector3.new(0, 1, 0))
+						obj.bg.Visible = headVis
+						obj.title.Visible = headVis
+						obj.info.Visible = headVis
+						if headVis then
+							local amt = ent:GetAttribute('Amount') or 1
+							local dist = entitylib.isAlive and math.floor((entitylib.character.RootPart.Position - ent.Position).Magnitude) or 0
+							obj.info.Text = (amt >= 2 and 'x' .. amt .. '  ' or '') .. dist .. 'm'
+							local tw = math.max(obj.title.TextBounds.X, obj.info.TextBounds.X)
+							local th = obj.title.TextBounds.Y + obj.info.TextBounds.Y + 3
+							local w = tw + 12
+							local h = th + 6
+							obj.bg.Size = Vector2.new(w, h)
+							obj.bg.Position = Vector2.new(headPos.X - w / 2, headPos.Y - h)
+							obj.title.Position = obj.bg.Position + Vector2.new(6, 3)
+							obj.info.Position = obj.title.Position + Vector2.new(0, obj.title.TextBounds.Y + 2)
+						end
+					end
+				end))
+				for _, v in collectionService:GetTagged('ItemDrop') do
+					Added(v)
+				end
+			else
+				for i in Reference do
+					Removing(i)
+				end
+			end
+		end,
+		Tooltip = 'Renders tags on dropped items'
+	})
+	Background = ItemESP:CreateToggle({
+		Name = 'Background',
+		Function = function(callback)
+			for _, obj in Reference do
+				obj.bg.Transparency = callback and 0.65 or 1
+			end
+		end,
+		Default = true
+	})
+	ItemESP:CreateToggle({
+		Name = 'Group items',
+		Tooltip = 'Group items into easier to read tags'
+	})
+	WhitelistOnly = ItemESP:CreateToggle({
+		Name = 'Whitelist Only',
+		Tooltip = 'Only renders whitelisted items',
+		Function = function(call)
+			if Whitelist.Object then
+				Whitelist.Object.Visible = call
+				if ItemESP.Enabled then
+					ItemESP:Toggle()
+					ItemESP:Toggle()
+				end
+			end
+		end
+	})
+	Whitelist = ItemESP:CreateTextList({
+		Name = 'Allowed items',
+		Visible = false,
+		Darker = true,
+		Function = function()
+			if ItemESP.Enabled then
+				ItemESP:Toggle()
+				ItemESP:Toggle()
+			end
+		end
+	})
 end)
 
 run(function()
