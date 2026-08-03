@@ -6212,6 +6212,8 @@ run(function()
 			card.AnchorPoint = Vector2.new(0.5, 1)
 			card.Position = UDim2.fromOffset(0, 0)
 			card.Visible = false
+			local corner = Instance.new('UICorner', card)
+			corner.CornerRadius = UDim.new(0, 4)
 			local pad = Instance.new('UIPadding', card)
 			pad.PaddingLeft = UDim.new(0, 6)
 			pad.PaddingRight = UDim.new(0, 6)
@@ -6533,6 +6535,8 @@ run(function()
 	compactFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 	compactFrame.BackgroundTransparency = 0.3
 	compactFrame.BorderSizePixel = 0
+	local _compactCorner = Instance.new('UICorner', compactFrame)
+	_compactCorner.CornerRadius = UDim.new(0, 4)
 	compactFrame.AutomaticSize = Enum.AutomaticSize.XY
 	compactFrame.AnchorPoint = Vector2.new(1, 1)
 	compactFrame.Position = UDim2.new(1, -10, 1, -10)
@@ -6963,12 +6967,14 @@ run(function()
 			-- Normal mode: ScreenGui card
 			local card = Instance.new('Frame')
 			card.BackgroundColor3 = Color3.new(0, 0, 0)
-			card.BackgroundTransparency = 0.3
+			card.BackgroundTransparency = 0.35
 			card.BorderSizePixel = 0
 			card.AutomaticSize = Enum.AutomaticSize.XY
 			card.AnchorPoint = Vector2.new(0.5, 1)
 			card.Position = UDim2.fromOffset(0, 0)
 			card.Visible = false
+			local corner = Instance.new('UICorner', card)
+			corner.CornerRadius = UDim.new(0, 4)
 			local pad = Instance.new('UIPadding', card)
 			pad.PaddingLeft = UDim.new(0, 6); pad.PaddingRight = UDim.new(0, 6)
 			pad.PaddingTop = UDim.new(0, 3); pad.PaddingBottom = UDim.new(0, 3)
@@ -7416,6 +7422,8 @@ run(function()
 			card.AnchorPoint = Vector2.new(0.5, 1)
 			card.Position = UDim2.fromOffset(0, 0)
 			card.Visible = false
+			local corner = Instance.new('UICorner', card)
+			corner.CornerRadius = UDim.new(0, 4)
 			local pad = Instance.new('UIPadding', card)
 			pad.PaddingLeft = UDim.new(0, 6); pad.PaddingRight = UDim.new(0, 6)
 			pad.PaddingTop = UDim.new(0, 3); pad.PaddingBottom = UDim.new(0, 3)
@@ -7857,6 +7865,8 @@ run(function()
     		card.AnchorPoint = Vector2.new(0.5, 1)
     		card.Position = UDim2.fromOffset(0, 0)
     		card.Visible = false
+    		local corner = Instance.new('UICorner', card)
+    		corner.CornerRadius = UDim.new(0, 4)
     		local pad = Instance.new('UIPadding', card)
     		pad.PaddingLeft = UDim.new(0, 6); pad.PaddingRight = UDim.new(0, 6)
     		pad.PaddingTop = UDim.new(0, 3); pad.PaddingBottom = UDim.new(0, 3)
@@ -9374,6 +9384,8 @@ run(function()
 			card.AnchorPoint = Vector2.new(0.5, 1)
 			card.Position = UDim2.fromOffset(0, 0)
 			card.Visible = false
+			local corner = Instance.new('UICorner', card)
+			corner.CornerRadius = UDim.new(0, 4)
 			local pad = Instance.new('UIPadding', card)
 			pad.PaddingLeft = UDim.new(0, 6); pad.PaddingRight = UDim.new(0, 6)
 			pad.PaddingTop = UDim.new(0, 3); pad.PaddingBottom = UDim.new(0, 3)
@@ -9654,6 +9666,8 @@ run(function()
 			card.AnchorPoint = Vector2.new(0.5, 1)
 			card.Position = UDim2.fromOffset(0, 0)
 			card.Visible = false
+			local corner = Instance.new('UICorner', card)
+			corner.CornerRadius = UDim.new(0, 4)
 			local pad = Instance.new('UIPadding', card)
 			pad.PaddingLeft = UDim.new(0, 5); pad.PaddingRight = UDim.new(0, 5)
 			pad.PaddingTop = UDim.new(0, 3); pad.PaddingBottom = UDim.new(0, 3)
