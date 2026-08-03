@@ -9849,6 +9849,7 @@ run(function()
 	local manualActive = false
 	local autoActive = false
 	local savedStates = {}
+	local pgChildConn = nil
 
 	local function hideAllGui()
 		pcall(function()
@@ -9866,11 +9867,19 @@ run(function()
 					end
 				end
 			end
+			if pgChildConn then pgChildConn:Disconnect() end
+			pgChildConn = pg.ChildAdded:Connect(function(child)
+				if child ~= vape.gui and child:IsA('ScreenGui') then
+					savedStates[child] = child.Enabled
+					child.Enabled = false
+				end
+			end)
 		end)
 	end
 
 	local function restoreAllGui()
 		pcall(function()
+			if pgChildConn then pgChildConn:Disconnect(); pgChildConn = nil end
 			for obj, state in savedStates do
 				if obj and obj.Parent then
 					if obj:IsA('ScreenGui') then
