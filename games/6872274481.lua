@@ -10117,6 +10117,19 @@ run(function()
 		Default = true,
 	})
 
+	pcall(function()
+		local vrs = game:GetService('VideoRecordingService')
+		RecordingMode:Clean(vrs.RecordingStarted:Connect(function()
+			if not AutoHide.Enabled then return end
+			autoActive = true
+			refresh()
+		end))
+		RecordingMode:Clean(vrs.RecordingStopped:Connect(function()
+			autoActive = false
+			refresh()
+		end))
+	end)
+
 	RecordingMode:Clean(game:GetService('UserInputService').InputBegan:Connect(function(input)
 		if not AutoHide.Enabled then return end
 		if input.KeyCode == Enum.KeyCode.F12 or input.KeyCode == Enum.KeyCode.Print then
