@@ -7079,7 +7079,7 @@ run(function()
 					if entitylib.isAlive then
 						local hp = lplr.Character:GetAttribute('Health') or 0
 						local maxhp = lplr.Character:GetAttribute('MaxHealth') or 100
-						label.Text = math.round(hp) .. ' \u2764'
+						label.Text = math.round(hp) .. ' \u{2764}'
 						label.Color = Color3.fromHSV(math.clamp(hp / maxhp, 0, 1) / 2.8, 0.86, 1)
 						local vp = gameCamera.ViewportSize
 						label.Position = Vector2.new(vp.X / 2 + 6, vp.Y / 2 + 30)
@@ -9199,7 +9199,7 @@ run(function()
 						obj.txt.Visible = vis
 						if vis then
 							local dist = root and math.round((root.Position - pos).Magnitude) or 0
-							obj.txt.Text = string.format('Pot \u2022 %dm', dist)
+							obj.txt.Text = string.format('Pot \u{2022} %dm', dist)
 							local bounds = obj.txt.TextBounds
 							local w = bounds.X + 10
 							local h = bounds.Y + 6
