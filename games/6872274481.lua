@@ -9845,6 +9845,7 @@ run(function()
 end)
 
 run(function()
+	local CleanRecord
 	local savedStates = {}
 	local pgChildConn = nil
 
@@ -9887,15 +9888,25 @@ run(function()
 		end)
 	end
 
-	pcall(function()
-		local vrs = game:GetService('VideoRecordingService')
-		vrs.RecordingStarted:Connect(function()
-			hideAllGui()
-		end)
-		vrs.RecordingStopped:Connect(function()
-			restoreAllGui()
-		end)
-	end)
+	CleanRecord = vape.Categories.Render:CreateModule({
+		Name = 'Clean Record',
+		Tooltip = 'Hides all GUI and notifications during Roblox recordings',
+		Function = function(callback)
+			if callback then
+				pcall(function()
+					local vrs = game:GetService('VideoRecordingService')
+					CleanRecord:Clean(vrs.RecordingStarted:Connect(function()
+						hideAllGui()
+					end))
+					CleanRecord:Clean(vrs.RecordingStopped:Connect(function()
+						restoreAllGui()
+					end))
+				end)
+			else
+				restoreAllGui()
+			end
+		end,
+	})
 end)
 
 --[[
