@@ -7479,7 +7479,6 @@ end)
 run(function()
     local KitESP
     local Background
-    local DrawingToggle
     local Scale
     local Reference = {}
     local Folder = Instance.new('Folder')
@@ -7496,54 +7495,7 @@ run(function()
     	star_collector = {'stars', 'crit_star'},
     }
 
-    local function AddedNormal(v, icon)
-    	local card = Instance.new('Frame')
-    	card.Name = icon
-    	card.AnchorPoint = Vector2.new(0.5, 1)
-    	card.BackgroundColor3 = Color3.new()
-    	card.BackgroundTransparency = Background.Enabled and 0.35 or 1
-    	card.BorderSizePixel = 0
-    	card.AutomaticSize = Enum.AutomaticSize.XY
-    	card.Visible = false
-    	local cardCorner = Instance.new('UICorner')
-    	cardCorner.CornerRadius = UDim.new(0, 4)
-    	cardCorner.Parent = card
-    	local cardPadding = Instance.new('UIPadding')
-    	cardPadding.PaddingLeft = UDim.new(0, 6)
-    	cardPadding.PaddingRight = UDim.new(0, 6)
-    	cardPadding.PaddingTop = UDim.new(0, 3)
-    	cardPadding.PaddingBottom = UDim.new(0, 3)
-    	cardPadding.Parent = card
-    	local cardLayout = Instance.new('UIListLayout')
-    	cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    	cardLayout.FillDirection = Enum.FillDirection.Horizontal
-    	cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    	cardLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    	cardLayout.Padding = UDim.new(0, 4)
-    	cardLayout.Parent = card
-    	local s = Scale and Scale.Value or 1
-    	local img = Instance.new('ImageLabel')
-    	img.Name = 'Icon'
-    	img.Size = UDim2.fromOffset(math.floor(12 * s), math.floor(12 * s))
-    	img.BackgroundTransparency = 1
-    	img.Image = bedwars.getIcon({ itemType = icon }, true)
-    	img.LayoutOrder = 1
-    	img.Parent = card
-    	local info = Instance.new('TextLabel')
-    	info.Name = 'Info'
-    	info.AutomaticSize = Enum.AutomaticSize.XY
-    	info.BackgroundTransparency = 1
-    	info.Font = Enum.Font.GothamBold
-    	info.TextSize = math.floor(9 * s)
-    	info.TextColor3 = Color3.fromRGB(200, 200, 200)
-    	info.RichText = true
-    	info.LayoutOrder = 2
-    	info.Parent = card
-    	card.Parent = Folder
-    	Reference[v] = {isDrawing = false, card = card}
-    end
-
-    local function AddedDrawing(v, icon)
+    local function Added(v, icon)
     	local s = Scale and Scale.Value or 1
     	local bg = Drawing.new('Square')
     	bg.Filled = true
@@ -7560,27 +7512,15 @@ run(function()
     	label.ZIndex = 2
     	label.Visible = false
     	label.Text = icon
-    	Reference[v] = {isDrawing = true, bg = bg, label = label, icon = icon}
-    end
-
-    local function Added(v, icon)
-    	if DrawingToggle and DrawingToggle.Enabled then
-    		AddedDrawing(v, icon)
-    	else
-    		AddedNormal(v, icon)
-    	end
+    	Reference[v] = {bg = bg, label = label, icon = icon}
     end
 
     local function Removing(v)
     	local ref = Reference[v]
     	if not ref then return end
     	Reference[v] = nil
-    	if ref.isDrawing then
-    		pcall(function() ref.bg:Remove() end)
-    		pcall(function() ref.label:Remove() end)
-    	else
-    		ref.card:Destroy()
-    	end
+    	pcall(function() ref.bg:Remove() end)
+    	pcall(function() ref.label:Remove() end)
     end
 
     local function addKit(tag, icon)
@@ -7609,26 +7549,17 @@ run(function()
     			KitESP:Clean(runService.PreRender:Connect(function()
     				for obj, ref in Reference do
     					local headPos, headVis = gameCamera:WorldToViewportPoint(obj.Position + Vector3.new(0, 2, 0))
-    					if ref.isDrawing then
-    						ref.bg.Visible = headVis
-    						ref.label.Visible = headVis
-    						if headVis then
-    							local dist = entitylib.isAlive and math.floor((entitylib.character.RootPart.Position - obj.Position).Magnitude) or 0
-    							ref.label.Text = ref.icon .. ' â¢ ' .. dist .. 'm'
-    							local tw = ref.label.TextBounds.X
-    							local th = ref.label.TextBounds.Y
-    							local w = tw + 12; local h = th + 6
-    							ref.bg.Size = Vector2.new(w, h)
-    							ref.bg.Position = Vector2.new(headPos.X - w / 2, headPos.Y - h)
-    							ref.label.Position = ref.bg.Position + Vector2.new(6, 3)
-    						end
-    					else
-    						ref.card.Visible = headVis
-    						if headVis then
-    							local dist = entitylib.isAlive and math.floor((entitylib.character.RootPart.Position - obj.Position).Magnitude) or 0
-    							ref.card.Info.Text = '<font color="rgb(130,130,130)">' .. dist .. 'm</font>'
-    							ref.card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
-    						end
+    					ref.bg.Visible = headVis
+    					ref.label.Visible = headVis
+    					if headVis then
+    						local dist = entitylib.isAlive and math.floor((entitylib.character.RootPart.Position - obj.Position).Magnitude) or 0
+    						ref.label.Text = ref.icon .. ' â¢ ' .. dist .. 'm'
+    						local tw = ref.label.TextBounds.X
+    						local th = ref.label.TextBounds.Y
+    						local w = tw + 12; local h = th + 6
+    						ref.bg.Size = Vector2.new(w, h)
+    						ref.bg.Position = Vector2.new(headPos.X - w / 2, headPos.Y - h)
+    						ref.label.Position = ref.bg.Position + Vector2.new(6, 3)
     					end
     				end
     			end))
@@ -7639,19 +7570,11 @@ run(function()
     	end,
     	Tooltip = 'ESP for certain kit related objects'
     })
-    DrawingToggle = KitESP:CreateToggle({
-    	Name = 'Drawing',
-    	Default = true,
-    })
     Background = KitESP:CreateToggle({
     	Name = 'Background',
     	Function = function(callback)
     		for _, ref in Reference do
-    			if ref.isDrawing then
-    				ref.bg.Transparency = callback and 0.65 or 0
-    			else
-    				ref.card.BackgroundTransparency = callback and 0.35 or 1
-    			end
+    			ref.bg.Transparency = callback and 0.65 or 0
     		end
     	end,
     	Default = true
@@ -7664,18 +7587,7 @@ run(function()
     	Decimal = 10,
     	Function = function(val)
     		for _, ref in Reference do
-    			if ref.isDrawing then
-    				ref.label.Size = math.floor(9 * val)
-    			else
-    				local icon = ref.card:FindFirstChild('Icon')
-    				if icon then
-    					icon.Size = UDim2.fromOffset(math.floor(12 * val), math.floor(12 * val))
-    				end
-    				local info = ref.card:FindFirstChild('Info')
-    				if info then
-    					info.TextSize = math.floor(9 * val)
-    				end
-    			end
+    			ref.label.Size = math.floor(9 * val)
     		end
     	end
     })
