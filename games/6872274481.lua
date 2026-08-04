@@ -15054,7 +15054,18 @@ run(function()
     end
 
     local function depositAll()
-        if not entitylib.isAlive then return end
+        if not entitylib.isAlive then
+            notif('AutoBank v3', 'Not alive', 3, 'info')
+            return
+        end
+
+        local inv = store.inventory and store.inventory.inventory
+        local items = inv and inv.items
+        if not items then
+            notif('AutoBank v3', 'Inventory not ready', 3, 'warning')
+            return
+        end
+
         local chestData = replicatedStorage.Inventories:FindFirstChild(lplr.Name .. '_personal')
         if not chestData then
             notif('AutoBank v3', 'Personal chest not found', 4, 'warning')
@@ -15076,8 +15087,8 @@ run(function()
 
         local failed = 0
         local tried = 0
-        for _, v in store.inventory.inventory.items do
-            if v.itemType == 'iron' or v.itemType == 'diamond' or v.itemType == 'emerald' then
+        for _, v in items do
+            if v.itemType == 'iron' or v.itemType == 'gold' or v.itemType == 'diamond' or v.itemType == 'emerald' or v.itemType == 'void_crystal' then
                 tried += 1
                 local ok = pcall(function()
                     if rawRemote then
@@ -15098,8 +15109,14 @@ run(function()
             invNS:Get('SetObservedChest'):SendToServer(nil)
         end)
 
-        if tried > 0 and failed > 0 then
+        if tried == 0 then
+            notif('AutoBank v3', 'No resources to deposit', 3, 'info')
+        elseif failed == tried then
+            notif('AutoBank v3', 'All ' .. tried .. ' deposits blocked', 4, 'warning')
+        elseif failed > 0 then
             notif('AutoBank v3', failed .. '/' .. tried .. ' deposits failed', 4, 'warning')
+        else
+            notif('AutoBank v3', 'Deposited ' .. tried .. ' resources', 3, 'info')
         end
     end
 
