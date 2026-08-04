@@ -15223,17 +15223,45 @@ run(function()
                 d('item=NONE in inventory')
             end
 
-            -- test call with physChest reference
+            -- tool validity
+            if firstItem then
+                local t = firstItem.tool
+                d('tool.Parent=' .. tostring(t and t.Parent and t.Parent.Name or 'NIL'))
+                d('tool.inGame=' .. tostring(t and t:IsDescendantOf(game) or false))
+            end
+
+            -- test 1: rawRemote with physChest
             if rawRemote and physChest and firstItem then
                 pcall(function() invNS:Get('SetObservedChest'):SendToServer(physChest) end)
-                task.wait(0.05)
+                task.wait(0.1)
                 local ok, res = pcall(function()
                     if rawRemote.ClassName == 'RemoteFunction' then
                         return rawRemote:InvokeServer(physChest, firstItem.tool)
                     end
                 end)
                 pcall(function() invNS:Get('SetObservedChest'):SendToServer(nil) end)
-                d('physChest call: ok=' .. tostring(ok) .. ' res=' .. tostring(res))
+                d('rawInvoke(physChest): ok=' .. tostring(ok) .. ' res=' .. tostring(res))
+            end
+
+            -- test 2: rawRemote with chestData folder
+            if rawRemote and chestData and firstItem then
+                pcall(function() invNS:Get('SetObservedChest'):SendToServer(chestData) end)
+                task.wait(0.1)
+                local ok2, res2 = pcall(function()
+                    if rawRemote.ClassName == 'RemoteFunction' then
+                        return rawRemote:InvokeServer(chestData, firstItem.tool)
+                    end
+                end)
+                pcall(function() invNS:Get('SetObservedChest'):SendToServer(nil) end)
+                d('rawInvoke(folder): ok=' .. tostring(ok2) .. ' res=' .. tostring(res2))
+            end
+
+            -- test 3: wrapper CallServer with chestData (goes through client wrapper)
+            if giveWrapper and chestData and firstItem then
+                local ok3, res3 = pcall(function()
+                    return giveWrapper:CallServer(chestData, firstItem.tool)
+                end)
+                d('wrapper(folder): ok=' .. tostring(ok3) .. ' res=' .. tostring(res3))
             end
 
             local out = table.concat(lines, ' | ')
