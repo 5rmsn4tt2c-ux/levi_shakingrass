@@ -15039,8 +15039,48 @@ run(function()
     })
 end)
 
+run(function()
+    local AutoBankV3
+    local Interval
 
+    local function depositAll()
+        local chest = replicatedStorage.Inventories:FindFirstChild(lplr.Name .. '_personal')
+        if not chest then return end
+        for _, v in store.inventory.inventory.items do
+            if v.itemType == 'iron' or v.itemType == 'diamond' or v.itemType == 'emerald' then
+                pcall(function()
+                    bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(chest, v.tool)
+                end)
+            end
+        end
+    end
 
+    AutoBankV3 = vape.Categories.Inventory:CreateModule({
+        Name = 'AutoBank v3',
+        Function = function(callback)
+            if callback then
+                repeat
+                    if entitylib.isAlive then
+                        depositAll()
+                    end
+                    task.wait(Interval.Value)
+                until not AutoBankV3.Enabled
+            end
+        end,
+        Tooltip = 'Deposits resources directly into your chest remotely — no dropping required'
+    })
+    Interval = AutoBankV3:CreateSlider({
+        Name = 'Interval',
+        Min = 0.5,
+        Max = 10,
+        Default = 2,
+        Decimal = 10,
+        Suffix = function(val)
+            return val == 1 and 'second' or 'seconds'
+        end,
+        Tooltip = 'How often to attempt depositing into your chest'
+    })
+end)
 
 run(function()
     local AutoBuy
