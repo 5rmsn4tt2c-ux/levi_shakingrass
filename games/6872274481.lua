@@ -15153,6 +15153,72 @@ run(function()
         end,
         Tooltip = 'How often to attempt depositing into your chest'
     })
+    AutoBankV3:CreateButton({
+        Name = 'Debug Dump',
+        Function = function()
+            local lines = {}
+            local function d(s) table.insert(lines, s) end
+
+            -- chest data folder
+            local chestData = replicatedStorage.Inventories:FindFirstChild(lplr.Name .. '_personal')
+            d('chestData=' .. tostring(chestData and chestData.Name or 'NIL'))
+
+            -- physical chest
+            local tagged = collectionService:GetTagged('personal-chest')
+            d('tagged#=' .. #tagged)
+            local physChest = findPhysicalChest()
+            if physChest then
+                local plrPos = entitylib.character and entitylib.character.RootPart and entitylib.character.RootPart.Position
+                local dist = plrPos and math.floor((plrPos - physChest.Position).Magnitude) or '?'
+                d('physChest=' .. physChest.Name .. ' dist=' .. dist)
+                d('owner attr=' .. tostring(physChest:GetAttribute('Owner') or physChest:GetAttribute('PlayerId') or physChest:GetAttribute('UserId') or 'none'))
+            else
+                d('physChest=NIL')
+            end
+
+            -- raw remote info
+            local invNS = bedwars.Client:GetNamespace('Inventory')
+            local giveWrapper = invNS:Get('ChestGiveItem')
+            local rawRemote = giveWrapper and giveWrapper.instance
+            d('remote=' .. tostring(rawRemote and (rawRemote.ClassName .. '/' .. rawRemote.Name) or 'NIL'))
+
+            -- first matching item
+            local inv = store.inventory and store.inventory.inventory
+            local items = inv and inv.items
+            local firstItem
+            if items then
+                for _, v in items do
+                    if v.itemType == 'iron' or v.itemType == 'gold' or v.itemType == 'diamond' or v.itemType == 'emerald' then
+                        firstItem = v
+                        break
+                    end
+                end
+            end
+            if firstItem then
+                d('item=' .. firstItem.itemType .. ' tool=' .. tostring(firstItem.tool and firstItem.tool.ClassName or 'NIL'))
+            else
+                d('item=NONE in inventory')
+            end
+
+            -- test call with physChest reference
+            if rawRemote and physChest and firstItem then
+                pcall(function() invNS:Get('SetObservedChest'):SendToServer(physChest) end)
+                task.wait(0.05)
+                local ok, res = pcall(function()
+                    if rawRemote.ClassName == 'RemoteFunction' then
+                        return rawRemote:InvokeServer(physChest, firstItem.tool)
+                    end
+                end)
+                pcall(function() invNS:Get('SetObservedChest'):SendToServer(nil) end)
+                d('physChest call: ok=' .. tostring(ok) .. ' res=' .. tostring(res))
+            end
+
+            local out = table.concat(lines, ' | ')
+            if setclipboard then setclipboard(out) end
+            notif('V3 Debug', out, 15, 'info')
+        end,
+        Tooltip = 'Dumps chest/remote debug info and copies to clipboard'
+    })
 end)
 
 run(function()
