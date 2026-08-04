@@ -69,12 +69,36 @@ local function downloadFile(path, func)
 	return (func or readfile)(path)
 end
 
+local rankCache = {}
 local store = {
 	lastHit = 0,
 	attackReach = 0,
 	attackReachUpdate = tick(),
 	damageBlockFail = tick(),
 	hand = {},
+	rank = setmetatable({}, {
+		__index = function(self, index)
+			return {
+				async = function()
+					if rankCache[index] then
+						return rankCache[index]
+					end
+
+					if index then
+						local ok, rank = pcall(function()
+							return bedwars.Client:Get('FetchRanks'):CallServer({index.UserId})
+						end)
+						if ok and typeof(rank) == 'table' and rank[1] and rank[1].rankDivision then
+							rankCache[index] = rank[1].rankDivision
+							return rankCache[index]
+						end
+					end
+
+					return nil
+				end,
+			}
+		end
+	}),
 	inventory = {
 		inventory = {
 			items = {},
@@ -861,7 +885,7 @@ run(function()
 		QueueCard = require(lplr.PlayerScripts.TS.controllers.global.queue.ui['queue-card']).QueueCard,
 		QueueMeta = require(replicatedStorage.TS.game['queue-meta']).QueueMeta,
 		Roact = require(replicatedStorage['rbxts_include']['node_modules']['@rbxts']['roact'].src),
-
+		RankMeta = require(replicatedStorage.TS.rank['rank-meta']).RankMeta,
 		RuntimeLib = require(replicatedStorage['rbxts_include'].RuntimeLib),
 		SummonerKitBalance = require(replicatedStorage.TS.games.bedwars.kit.kits.summoner['summoner-kit-balance']).SummonerKitBalance,
 		StatusEffectUtil = require(replicatedStorage.TS['status-effect']['status-effect-util']).StatusEffectUtil,
@@ -8101,6 +8125,7 @@ run(function()
     local Health
     local Distance
     local Equipment
+    local Rank
     local Enchant
     local DrawingToggle
     local Scale
@@ -8112,6 +8137,11 @@ run(function()
     local Folder = Instance.new('Folder')
     Folder.Parent = vape.gui
     local methodused
+    local function formatRankDiv(div)
+    	if not div then return nil end
+    	return div:gsub('_', ' '):gsub('(%a+)', function(w) return w:sub(1,1):upper()..w:sub(2) end)
+    end
+
     local Added = {
     	Normal = function(ent)
     		if not Targets.Players.Enabled and ent.Player then
@@ -8176,6 +8206,18 @@ run(function()
     		nametag.RichText = true
     		nametag.Parent = Folder
     		task.spawn(function()
+    			if Rank.Enabled and ent.Player then
+    				local Icon = Instance.new('ImageLabel')
+    				Icon.Name = 'RankIcon'
+    				Icon.Size = UDim2.fromOffset(30, 30)
+    				Icon.Position = UDim2.fromOffset(size.X + 10, -4)
+    				Icon.BackgroundTransparency = 1
+    				Icon.Image = store.rank[ent.Player]:async() and bedwars.RankMeta[store.rank[ent.Player]:async()].image
+    					or ''
+    				Icon.Parent = nametag
+    			end
+    		end)
+    		task.spawn(function()
     			if Enchant.Enabled and ent.Player then
     				local Icon = Instance.new('ImageLabel')
     				Icon.Name = 'EnchantIcon'
@@ -8236,6 +8278,23 @@ run(function()
     		nametag.Text.Text = Strings[ent]
     		nametag.Text.Color = entitylib.getEntityColor(ent) or Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
     		nametag.BG.Size = Vector2.new(nametag.Text.TextBounds.X + 8, nametag.Text.TextBounds.Y + 7)
+    		if Rank.Enabled and ent.Player then
+    			local rankLabel = Drawing.new('Text')
+    			rankLabel.Size = 13 * Scale.Value
+    			rankLabel.Font = 0
+    			rankLabel.Color = Color3.fromRGB(255, 215, 0)
+    			rankLabel.Visible = false
+    			rankLabel.ZIndex = 2
+    			rankLabel.Text = ''
+    			nametag.Rank = rankLabel
+    			task.spawn(function()
+    				local div = store.rank[ent.Player]:async()
+    				local txt = formatRankDiv(div)
+    				if txt and nametag.Rank then
+    					nametag.Rank.Text = txt
+    				end
+    			end)
+    		end
     		if Enchant.Enabled and ent.Player then
     			local enchantLabel = Drawing.new('Text')
     			enchantLabel.Size = 13 * Scale.Value
@@ -8585,6 +8644,10 @@ run(function()
     			NameTags:Toggle()
     		end
     	end,
+    })
+    Rank = NameTags:CreateToggle({
+    	Name = 'Rank',
+    	Tooltip = "Displays player's rank",
     })
     Enchant = NameTags:CreateToggle({
     	Name = 'Enchant',
