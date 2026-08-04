@@ -15044,13 +15044,32 @@ run(function()
     local Interval
 
     local function findPhysicalChest()
+        -- try owner attribute first (some modes set it)
         for _, obj in collectionService:GetTagged('personal-chest') do
             local owner = obj:GetAttribute('Owner') or obj:GetAttribute('PlayerId') or obj:GetAttribute('UserId')
-            if owner == lplr.UserId or owner == lplr.Name or obj.Name == lplr.Name then
+            if owner == lplr.UserId or owner == lplr.Name then
                 return obj
             end
         end
-        return collectionService:GetTagged('personal-chest')[1]
+        -- fall back: find chest nearest to our team's spawn (personal chests sit at team bases)
+        local team = lplr:GetAttribute('Team') or 1
+        local spawnCF = workspace.MapCFrames:FindFirstChild(team .. '_spawn')
+        if spawnCF and spawnCF.Value then
+            local spawnPos = spawnCF.Value.Position
+            local best, bestDist
+            for _, obj in collectionService:GetTagged('personal-chest') do
+                local ok, pos = pcall(function() return obj.Position end)
+                if ok and pos then
+                    local d = (spawnPos - pos).Magnitude
+                    if not best or d < bestDist then
+                        best = obj
+                        bestDist = d
+                    end
+                end
+            end
+            if best then return best end
+        end
+        return nil
     end
 
     local function depositAll()
@@ -15074,14 +15093,18 @@ run(function()
 
         local invNS = bedwars.Client:GetNamespace('Inventory')
 
-        -- tell server this chest is "observed/open" so the deposit remote accepts it
         local physChest = findPhysicalChest()
+        if not physChest then
+            notif('AutoBank v3', 'Cannot locate your chest', 4, 'warning')
+            return
+        end
+
+        -- open the chest server-side using the correct physical chest reference
         pcall(function()
-            invNS:Get('SetObservedChest'):SendToServer(physChest or chestData)
+            invNS:Get('SetObservedChest'):SendToServer(physChest)
         end)
         task.wait(0.05)
 
-        -- bypass client-side wrapper in case it has a local distance gate
         local giveWrapper = invNS:Get('ChestGiveItem')
         local rawRemote = giveWrapper and giveWrapper.instance
 
@@ -15098,9 +15121,9 @@ run(function()
                 tried += 1
                 local ok, result = pcall(function()
                     if rawRemote.ClassName == 'RemoteFunction' then
-                        return rawRemote:InvokeServer(chestData, v.tool)
+                        return rawRemote:InvokeServer(physChest, v.tool)
                     else
-                        rawRemote:FireServer(chestData, v.tool)
+                        rawRemote:FireServer(physChest, v.tool)
                     end
                 end)
                 if not ok then
