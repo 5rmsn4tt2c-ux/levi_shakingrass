@@ -24532,3 +24532,23 @@ run(function()
         end
     })
 end)
+
+run(function()
+    local GraySky
+
+    GraySky = vape.Categories.Render:CreateModule({
+        Name = 'Gray Sky',
+        Function = function(callback)
+            if callback then
+                if setfflag then
+                    pcall(setfflag, 'DebugSkyGray', 'True')
+                    notif('Gray Sky', 'Rejoin for the flag to take effect', 8, 'info')
+                else
+                    notif('Gray Sky', 'Not supported by this executor', 5, 'warning')
+                    GraySky:Toggle()
+                end
+            end
+        end,
+        Tooltip = 'Makes the sky gray via FFlagDebugSkyGray. Requires a rejoin to take effect.'
+    })
+end)
