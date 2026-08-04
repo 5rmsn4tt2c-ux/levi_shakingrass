@@ -15074,6 +15074,12 @@ run(function()
         return nil
     end
 
+    local function getChestPrimaryPart(physChest)
+        if not physChest then return nil end
+        if physChest:IsA('BasePart') then return physChest end
+        return physChest.PrimaryPart or physChest:FindFirstChildWhichIsA('BasePart')
+    end
+
     local function depositAll()
         if not entitylib.isAlive then
             notif('AutoBank v3', 'Not alive', 3, 'info')
@@ -15093,6 +15099,19 @@ run(function()
             return
         end
 
+        -- bring chest to player so server distance check passes
+        local physChest = findPhysicalChest()
+        local chestPart = getChestPrimaryPart(physChest)
+        local savedCFrame
+        if chestPart and entitylib.character and entitylib.character.RootPart then
+            savedCFrame = chestPart.CFrame
+            local playerCF = entitylib.character.RootPart.CFrame
+            pcall(function()
+                chestPart.CFrame = playerCF * CFrame.new(0, 0, -3)
+            end)
+            task.wait(0.05) -- allow one replication cycle
+        end
+
         local invNS = bedwars.Client:GetNamespace('Inventory')
 
         -- folder reference is what the server expects for ChestGiveItem
@@ -15105,6 +15124,10 @@ run(function()
         local rawRemote = giveWrapper and giveWrapper.instance
 
         if not rawRemote then
+            -- restore chest before returning
+            if chestPart and savedCFrame then
+                pcall(function() chestPart.CFrame = savedCFrame end)
+            end
             notif('AutoBank v3', 'No raw remote access', 4, 'warning')
             return
         end
@@ -15133,6 +15156,11 @@ run(function()
         pcall(function()
             invNS:Get('SetObservedChest'):SendToServer(nil)
         end)
+
+        -- restore chest to original position
+        if chestPart and savedCFrame then
+            pcall(function() chestPart.CFrame = savedCFrame end)
+        end
 
         if tried == 0 then
             notif('AutoBank v3', 'No resources to deposit', 3, 'info')
