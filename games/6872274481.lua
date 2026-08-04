@@ -12960,7 +12960,7 @@ end)
 
 run(function()
     local AutoTool
-    local old, event
+    local old
     
     local function switchHotbarItem(block)
         if block and not block:GetAttribute('NoBreak') and not block:GetAttribute('Team'..(lplr:GetAttribute('Team') or 0)..'NoBreak') then
@@ -12971,9 +12971,7 @@ run(function()
                 end
     
                 if hotbarSwitch(slot) then
-                    if inputService:IsMouseButtonPressed(0) then 
-                        event:Fire() 
-                    end
+                    contextActionService:CallFunction('block-break', Enum.UserInputState.End, newproxy(true))
                     return true
                 end
             end
@@ -12984,11 +12982,6 @@ run(function()
         Name = 'Auto Tool',
         Function = function(callback)
             if callback then
-                event = Instance.new('BindableEvent')
-                AutoTool:Clean(event)
-                AutoTool:Clean(event.Event:Connect(function()
-                    contextActionService:CallFunction('block-break', Enum.UserInputState.Begin, newproxy(true))
-                end))
                 old = bedwars.BlockBreaker.hitBlock
                 bedwars.BlockBreaker.hitBlock = function(self, maid, raycastparams, ...)
                     local block = self.clientManager:getBlockSelector():getMouseInfo(1, {ray = raycastparams})
@@ -13206,6 +13199,7 @@ run(function()
     local Layers
     local PlaceHz
     local AutoPatch
+    local AutoPatchRange
     local ProtectedLayers
     local PlacementSpeed
 
@@ -13289,7 +13283,7 @@ run(function()
                     local worldPos = data.blockRef.blockPosition * 3
                     local bed = getBedNear()
                     if not bed then return end
-                    if (worldPos - bed.Position).Magnitude > PlaceRange.Value then return end
+                    if (entitylib.character.RootPart.Position - worldPos).Magnitude > AutoPatchRange.Value then return end
                     if not isWithinProtectedLayers(worldPos, bed) then return end
                     if getPlacedBlock(worldPos) then return end
 
@@ -13344,6 +13338,9 @@ run(function()
                                 end
                                 pos = (bed.CFrame * CFrame.new(pos)).Position
                                 if getPlacedBlock(pos) then
+                                    continue
+                                end
+                                if entitylib.isAlive and (entitylib.character.RootPart.Position - pos).Magnitude > PlaceRange.Value then
                                     continue
                                 end
                                 if hotbar and hotbarSwitch(hotbar) then
@@ -13417,6 +13414,14 @@ run(function()
         Default = false,
         Tooltip = 'When enabled, automatically replaces blocks broken by enemies within the protected layers'
     })
+    AutoPatchRange = BedProtector:CreateSlider({
+        Name = 'AutoPatch Range',
+        Min = 1,
+        Max = 40,
+        Default = 15,
+        Suffix = 'studs',
+        Tooltip = 'How far from your character AutoPatch will replace broken blocks'
+    })
     ProtectedLayers = BedProtector:CreateSlider({
         Name = 'Protected Layers',
         Min = 1,
@@ -13433,7 +13438,9 @@ run(function()
         Suffix = 'ms',
         Tooltip = 'Delay in milliseconds before AutoPatch places a replacement block; 0 for instant'
     })
+end)
 
+run(function()
     local HiveProtector
     local HiveProtectRange
     local HiveLayers
@@ -13612,6 +13619,7 @@ run(function()
     local LimitItem
     local UseBlacklist
     local Blacklist
+    local Hole
     
     local function isBlacklisted(itemType)
     	return UseBlacklist and UseBlacklist.Enabled and Blacklist and table.find(Blacklist.ListEnabled, itemType)
@@ -13630,7 +13638,9 @@ run(function()
     		return blocks
     	end
     
-    	for _, item in store.inventory.inventory.items do
+    	for _, slot in store.inventory.hotbar do
+    		local item = slot.item
+    		if not item then continue end
     		local itemType = item.itemType
     		local meta = itemType and bedwars.ItemMeta[itemType]
     		local block = meta and meta.block
@@ -13847,6 +13857,45 @@ run(function()
     		'tnt',
     		'siege_tnt',
     	},
+    })
+    Hole = BlockIn:CreateToggle({
+    	Name = 'Hole',
+    	Tooltip = 'Walks you into a gap at the enemy bed with 0 knockback',
+    	Function = function(callback)
+    		if not callback then return end
+    		task.spawn(function()
+    			repeat
+    				if entitylib.isAlive then
+    					local myTeam = lplr:GetAttribute('Team')
+    					local selfpos = entitylib.character.RootPart.Position
+    					local enemyBed = nil
+    					for _, v in collectionService:GetTagged('bed') do
+    						local bedTeam = v:GetAttribute('Team')
+    						if bedTeam and bedTeam ~= myTeam and (selfpos - v.Position).Magnitude <= 25 then
+    							enemyBed = v
+    							break
+    						end
+    					end
+    					if enemyBed then
+    						for _, dir in {
+    							Vector3.new(3, 0, 0), Vector3.new(-3, 0, 0),
+    							Vector3.new(0, 0, 3), Vector3.new(0, 0, -3),
+    							Vector3.new(3, 0, 3), Vector3.new(-3, 0, 3),
+    							Vector3.new(3, 0, -3), Vector3.new(-3, 0, -3),
+    						} do
+    							local pos = enemyBed.Position + dir
+    							if not getPlacedBlock(pos) then
+    								entitylib.character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+    								lplr.Character.Humanoid:MoveTo(Vector3.new(pos.X, selfpos.Y, pos.Z))
+    								break
+    							end
+    						end
+    					end
+    				end
+    				task.wait(0.05)
+    			until not Hole.Enabled
+    		end)
+    	end,
     })
 end)
 
@@ -14990,709 +15039,7 @@ run(function()
     })
 end)
 
-run(function()
-    local BenTheBank
-    local BenGUICheck
-    local BenChests
-    local benFrozen = {}
-    local benStashedCounts = {iron = 0, diamond = 0, emerald = 0}
-    local benBusy = false
-    local benResourceTypes = {'emerald', 'diamond', 'iron'}
 
-    local benBankGui = Instance.new('ScreenGui')
-    benBankGui.Name = 'BenBankLootUI'
-    benBankGui.Parent = vape.gui
-    benBankGui.Enabled = false
-    benBankGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    benBankGui.DisplayOrder = 10
-    benBankGui.ResetOnSpawn = false
-
-    local benBankFrame = Instance.new('Frame')
-    benBankFrame.Parent = benBankGui
-    benBankFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    benBankFrame.BackgroundTransparency = 0.3
-    benBankFrame.BorderSizePixel = 0
-    benBankFrame.Position = UDim2.new(0, 8, 1, -100)
-    benBankFrame.Size = UDim2.new(0, 130, 0, 85)
-    benBankFrame.AnchorPoint = Vector2.new(0, 1)
-
-    local benBankCorner = Instance.new('UICorner')
-    benBankCorner.CornerRadius = UDim.new(0, 8)
-    benBankCorner.Parent = benBankFrame
-
-    local benBankTitle = Instance.new('TextLabel')
-    benBankTitle.Parent = benBankFrame
-    benBankTitle.BackgroundTransparency = 1
-    benBankTitle.Size = UDim2.new(1, 0, 0, 20)
-    benBankTitle.Position = UDim2.new(0, 0, 0, 4)
-    benBankTitle.Text = 'BenTheBest Loot'
-    benBankTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    benBankTitle.TextSize = 13
-    benBankTitle.Font = Enum.Font.GothamBold
-
-    local benIronLabel = Instance.new('TextLabel')
-    benIronLabel.Parent = benBankFrame
-    benIronLabel.BackgroundTransparency = 1
-    benIronLabel.Size = UDim2.new(1, -16, 0, 18)
-    benIronLabel.Position = UDim2.new(0, 8, 0, 24)
-    benIronLabel.Text = 'Iron: 0'
-    benIronLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    benIronLabel.TextSize = 12
-    benIronLabel.Font = Enum.Font.Gotham
-    benIronLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local benDiamondLabel = Instance.new('TextLabel')
-    benDiamondLabel.Parent = benBankFrame
-    benDiamondLabel.BackgroundTransparency = 1
-    benDiamondLabel.Size = UDim2.new(1, -16, 0, 18)
-    benDiamondLabel.Position = UDim2.new(0, 8, 0, 42)
-    benDiamondLabel.Text = 'Diamond: 0'
-    benDiamondLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-    benDiamondLabel.TextSize = 12
-    benDiamondLabel.Font = Enum.Font.Gotham
-    benDiamondLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local benEmeraldLabel = Instance.new('TextLabel')
-    benEmeraldLabel.Parent = benBankFrame
-    benEmeraldLabel.BackgroundTransparency = 1
-    benEmeraldLabel.Size = UDim2.new(1, -16, 0, 18)
-    benEmeraldLabel.Position = UDim2.new(0, 8, 0, 60)
-    benEmeraldLabel.Text = 'Emerald: 0'
-    benEmeraldLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-    benEmeraldLabel.TextSize = 12
-    benEmeraldLabel.Font = Enum.Font.Gotham
-    benEmeraldLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local function benUpdateLootUI()
-        benIronLabel.Text = 'Iron: ' .. benStashedCounts.iron
-        benDiamondLabel.Text = 'Diamond: ' .. benStashedCounts.diamond
-        benEmeraldLabel.Text = 'Emerald: ' .. benStashedCounts.emerald
-    end
-
-    local function benDisableCollision(obj)
-        if obj:IsA('BasePart') then obj.CanCollide = false end
-        for _, part in obj:GetDescendants() do
-            if part:IsA('BasePart') then part.CanCollide = false end
-        end
-    end
-
-    local function benFreezeParts(obj)
-        if obj:IsA('BasePart') then
-            obj.Velocity = Vector3.zero
-            obj.RotVelocity = Vector3.zero
-            obj.CanCollide = false
-            obj.Anchored = true
-        end
-        for _, part in obj:GetDescendants() do
-            if part:IsA('BasePart') then
-                part.Velocity = Vector3.zero
-                part.RotVelocity = Vector3.zero
-                part.CanCollide = false
-                part.Anchored = true
-            end
-        end
-    end
-
-    local function benUnfreezeParts(obj)
-        if obj:IsA('BasePart') then
-            obj.CanCollide = true
-            obj.Anchored = false
-        end
-        for _, part in obj:GetDescendants() do
-            if part:IsA('BasePart') then
-                part.CanCollide = true
-                part.Anchored = false
-            end
-        end
-    end
-
-    local function benNearChest()
-        if entitylib.isAlive then
-            local pos = entitylib.character.RootPart.Position
-            for _, chest in BenChests do
-                if (chest.Position - pos).Magnitude < 20 then
-                    return true
-                end
-            end
-        end
-    end
-
-    local function benCleanupFrozen()
-        for i = #benFrozen, 1, -1 do
-            if not benFrozen[i] or not benFrozen[i].Parent then
-                table.remove(benFrozen, i)
-            end
-        end
-    end
-
-    local function benGetHidePos()
-        if not entitylib.isAlive then return Vector3.new(5000, 0, 0) end
-        return entitylib.character.RootPart.Position + Vector3.new(5000, 0, 0)
-    end
-
-    local function benStashOne()
-        if benBusy or not entitylib.isAlive then return end
-        for _, itemType in benResourceTypes do
-            local item = getItem(itemType)
-            if item then
-                benBusy = true
-                task.spawn(function()
-                    local caught
-                    local conn = collectionService:GetInstanceAddedSignal('ItemDrop'):Connect(function(v)
-                        if not caught then caught = v end
-                    end)
-
-                    local ok, dropped = pcall(function()
-                        return bedwars.Client:Get(remotes.DropItem):CallServer({
-                            item = item.tool,
-                            amount = item.amount
-                        })
-                    end)
-
-                    if not (ok and dropped) then
-                        task.wait()
-                        dropped = caught
-                    end
-                    conn:Disconnect()
-
-                    if dropped and dropped.Parent then
-                        pcall(function()
-                            dropped:SetAttribute('ClientDropTime', tick() + 9999)
-                            benDisableCollision(dropped)
-                        end)
-                        task.spawn(function()
-                            task.wait(0.15)
-                            if dropped and dropped.Parent then
-                                if entitylib.isAlive then
-                                    local hidePos = benGetHidePos()
-                                    dropped.CFrame = CFrame.new(hidePos)
-                                else
-                                    return
-                                end
-                                benFreezeParts(dropped)
-                                table.insert(benFrozen, dropped)
-                                benStashedCounts[itemType] = benStashedCounts[itemType] + item.amount
-                                benUpdateLootUI()
-                            end
-                        end)
-                    end
-                    task.wait(0.3)
-                    benBusy = false
-                end)
-                return
-            end
-        end
-    end
-
-    local benReleased = false
-
-    local function benDepositInventory()
-        local chest = replicatedStorage.Inventories:FindFirstChild(lplr.Name..'_personal')
-        if not chest then return end
-        for _, v in store.inventory.inventory.items do
-            if v.itemType == 'iron' or v.itemType == 'diamond' or v.itemType == 'emerald' then
-                pcall(function()
-                    bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(chest, v.tool)
-                end)
-            end
-        end
-    end
-
-    local function benReleaseAll()
-        if benReleased or not entitylib.isAlive then return end
-        if #benFrozen == 0 then return end
-        benReleased = true
-        local playerPos = entitylib.character.RootPart.Position
-        for i = #benFrozen, 1, -1 do
-            local item = benFrozen[i]
-            if item and item.Parent then
-                benUnfreezeParts(item)
-                item.CFrame = CFrame.new(playerPos)
-                item:SetAttribute('ClientDropTime', 0)
-            end
-            table.remove(benFrozen, i)
-        end
-        benStashedCounts = {iron = 0, diamond = 0, emerald = 0}
-        benUpdateLootUI()
-        benReleased = false
-    end
-
-    local function benPickupNearby()
-        if not entitylib.isAlive then return end
-        local pos = entitylib.character.RootPart.Position
-        for _, v in collectionService:GetTagged('ItemDrop') do
-            if v and v.Parent and tick() - (v:GetAttribute('ClientDropTime') or 0) >= 2 then
-                if (pos - v.Position).Magnitude <= 20 then
-                    pcall(function()
-                        bedwars.Client:Get(remotes.PickupItem):CallServerAsync({
-                            itemDrop = v
-                        })
-                    end)
-                end
-            end
-        end
-    end
-
-    local function benMaintainFrozen()
-        if not entitylib.isAlive then return end
-        local hidePos = benGetHidePos()
-        for _, item in benFrozen do
-            if item and item.Parent then
-                item.CFrame = CFrame.new(hidePos)
-                benFreezeParts(item)
-            end
-        end
-    end
-
-    BenTheBank = vape.Categories.Inventory:CreateModule({
-        Name = 'AutoBank BenTheBest',
-        Function = function(callback)
-            benBankGui.Enabled = callback
-            if callback then
-                benStashedCounts = {iron = 0, diamond = 0, emerald = 0}
-                benUpdateLootUI()
-                BenChests = collection('personal-chest', BenTheBank)
-                local lastChestClose = 0
-                repeat
-                    if entitylib.isAlive then
-                        benCleanupFrozen()
-                        local atChest = benNearChest() and (not BenGUICheck.Enabled or bedwars.AppController:isAppOpen('ChestApp'))
-                        if atChest then
-                            lastChestClose = tick()
-                            benReleaseAll()
-                            benPickupNearby()
-                            benDepositInventory()
-                        elseif tick() - lastChestClose < 3 then
-                            benMaintainFrozen()
-                        else
-                            benStashOne()
-                            benMaintainFrozen()
-                        end
-                    end
-                    task.wait(0.1)
-                until not BenTheBank.Enabled
-                benBusy = false
-            end
-        end,
-        Tooltip = 'Helps autobank your loot'
-    })
-    BenGUICheck = BenTheBank:CreateToggle({
-        Name = 'GUI Check',
-        Default = true
-    })
-end)
-
-run(function()
-    local AutoBankV3
-    local GUICheckV3
-    local PauseAtBase
-    local V3Chests
-    local v3Frozen = {}
-    local v3Busy = false
-    local v3Released = false
-    local v3Whitelist = {iron = true, diamond = true, emerald = true}
-    local v3CustomList
-    local v3StashedCounts = {iron = 0, diamond = 0, emerald = 0}
-
-    local v3Gui = Instance.new('ScreenGui')
-    v3Gui.Name = 'AutoBankV3UI'
-    v3Gui.Parent = vape.gui
-    v3Gui.Enabled = false
-    v3Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    v3Gui.DisplayOrder = 10
-    v3Gui.ResetOnSpawn = false
-
-    local v3Frame = Instance.new('Frame')
-    v3Frame.Parent = v3Gui
-    v3Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    v3Frame.BackgroundTransparency = 0.3
-    v3Frame.BorderSizePixel = 0
-    v3Frame.Position = UDim2.new(0, 8, 1, -100)
-    v3Frame.Size = UDim2.new(0, 140, 0, 90)
-    v3Frame.AnchorPoint = Vector2.new(0, 1)
-
-    local v3Corner = Instance.new('UICorner')
-    v3Corner.CornerRadius = UDim.new(0, 8)
-    v3Corner.Parent = v3Frame
-
-    local v3Title = Instance.new('TextLabel')
-    v3Title.Parent = v3Frame
-    v3Title.BackgroundTransparency = 1
-    v3Title.Size = UDim2.new(1, 0, 0, 20)
-    v3Title.Position = UDim2.new(0, 0, 0, 4)
-    v3Title.Text = 'AutoBank V3'
-    v3Title.TextColor3 = Color3.fromRGB(255, 215, 0)
-    v3Title.TextSize = 13
-    v3Title.Font = Enum.Font.GothamBold
-
-    local v3IronLabel = Instance.new('TextLabel')
-    v3IronLabel.Parent = v3Frame
-    v3IronLabel.BackgroundTransparency = 1
-    v3IronLabel.Size = UDim2.new(1, -16, 0, 18)
-    v3IronLabel.Position = UDim2.new(0, 8, 0, 26)
-    v3IronLabel.Text = 'Iron: 0'
-    v3IronLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    v3IronLabel.TextSize = 12
-    v3IronLabel.Font = Enum.Font.Gotham
-    v3IronLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local v3DiamondLabel = Instance.new('TextLabel')
-    v3DiamondLabel.Parent = v3Frame
-    v3DiamondLabel.BackgroundTransparency = 1
-    v3DiamondLabel.Size = UDim2.new(1, -16, 0, 18)
-    v3DiamondLabel.Position = UDim2.new(0, 8, 0, 44)
-    v3DiamondLabel.Text = 'Diamond: 0'
-    v3DiamondLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-    v3DiamondLabel.TextSize = 12
-    v3DiamondLabel.Font = Enum.Font.Gotham
-    v3DiamondLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local v3EmeraldLabel = Instance.new('TextLabel')
-    v3EmeraldLabel.Parent = v3Frame
-    v3EmeraldLabel.BackgroundTransparency = 1
-    v3EmeraldLabel.Size = UDim2.new(1, -16, 0, 18)
-    v3EmeraldLabel.Position = UDim2.new(0, 8, 0, 62)
-    v3EmeraldLabel.Text = 'Emerald: 0'
-    v3EmeraldLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-    v3EmeraldLabel.TextSize = 12
-    v3EmeraldLabel.Font = Enum.Font.Gotham
-    v3EmeraldLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local function v3UpdateUI()
-        v3IronLabel.Text = 'Iron: ' .. (v3StashedCounts.iron or 0)
-        v3DiamondLabel.Text = 'Diamond: ' .. (v3StashedCounts.diamond or 0)
-        v3EmeraldLabel.Text = 'Emerald: ' .. (v3StashedCounts.emerald or 0)
-    end
-
-    local function v3IsWhitelisted(itemType)
-        if v3Whitelist[itemType] then return true end
-        if v3CustomList then
-            for _, custom in (v3CustomList.Value or {}) do
-                if custom == itemType then return true end
-            end
-        end
-        return false
-    end
-
-    local function v3GetPersonalChest()
-        local teamId = lplr:GetAttribute('Team')
-        if not teamId then return nil end
-        local mapCFrames = workspace:FindFirstChild('MapCFrames')
-        local spawnCF = mapCFrames and mapCFrames:FindFirstChild(tostring(teamId) .. '_spawn')
-        if not spawnCF then return nil end
-        local spawnPos = spawnCF.Value.Position
-        local best, bestDist = nil, math.huge
-        for _, chest in V3Chests do
-            if chest and chest.Parent then
-                local dist = (chest.Position - spawnPos).Magnitude
-                if dist < bestDist then
-                    best = chest
-                    bestDist = dist
-                end
-            end
-        end
-        return best
-    end
-
-    local function v3GetHoldPos()
-        local chest = v3GetPersonalChest()
-        if chest then
-            return chest.Position - Vector3.new(0, 4, 0)
-        end
-        if entitylib.isAlive then
-            return entitylib.character.RootPart.Position - Vector3.new(0, 300, 0)
-        end
-        return nil
-    end
-
-    local function v3NearChest()
-        if not entitylib.isAlive then return false end
-        local pos = entitylib.character.RootPart.Position
-        for _, chest in V3Chests do
-            if chest and chest.Parent then
-                if (chest.Position - pos).Magnitude < 20 then
-                    return true
-                end
-            end
-        end
-        return false
-    end
-
-    -- Wider base detection using team spawn CFrame (covers gen + chest area).
-    local function v3AtBase()
-        if not entitylib.isAlive then return false end
-        local pos = entitylib.character.RootPart.Position
-        local teamId = lplr:GetAttribute('Team')
-        if teamId then
-            local mapCFrames = workspace:FindFirstChild('MapCFrames')
-            local spawnCF = mapCFrames and mapCFrames:FindFirstChild(tostring(teamId) .. '_spawn')
-            if spawnCF then
-                return (pos - spawnCF.Value.Position).Magnitude < 80
-            end
-        end
-        -- fallback: wider chest proximity
-        for _, chest in V3Chests do
-            if chest and chest.Parent then
-                if (chest.Position - pos).Magnitude < 60 then
-                    return true
-                end
-            end
-        end
-        return false
-    end
-
-    local function v3CleanFrozen()
-        for i = #v3Frozen, 1, -1 do
-            local entry = v3Frozen[i]
-            if not entry or not entry.item or not entry.item.Parent then
-                if entry then
-                    local t = entry.itemType
-                    v3StashedCounts[t] = math.max(0, (v3StashedCounts[t] or 0) - (entry.amount or 0))
-                end
-                table.remove(v3Frozen, i)
-                v3UpdateUI()
-            end
-        end
-    end
-
-    -- Item Suspend method: repeatedly set position + zero velocity, no Anchored=true.
-    -- This keeps NetworkTP ownership intact unlike Anchored=true.
-    local function v3SuspendItem(obj, pos)
-        pcall(function()
-            if obj:IsA('BasePart') then
-                obj.Position = pos
-                obj.Velocity = Vector3.zero
-                obj.RotVelocity = Vector3.zero
-                obj.CanCollide = false
-            end
-            for _, part in obj:GetDescendants() do
-                if part:IsA('BasePart') then
-                    part.Position = pos
-                    part.Velocity = Vector3.zero
-                    part.RotVelocity = Vector3.zero
-                    part.CanCollide = false
-                end
-            end
-        end)
-    end
-
-    local function v3MaintainAll()
-        local holdPos = v3GetHoldPos()
-        if not holdPos then return end
-        for _, entry in v3Frozen do
-            if entry and entry.item and entry.item.Parent then
-                v3SuspendItem(entry.item, holdPos)
-            end
-        end
-    end
-
-    local function v3StashOne()
-        if v3Busy or not entitylib.isAlive then return end
-        for _, v in store.inventory.inventory.items do
-            if v3IsWhitelisted(v.itemType) then
-                v3Busy = true
-                local itemType = v.itemType
-                local itemTool = v.tool
-                local itemAmount = v.amount
-                task.spawn(function()
-                    local ok, dropped = pcall(function()
-                        return bedwars.Client:Get(remotes.DropItem):CallServer({
-                            item = itemTool,
-                            amount = itemAmount
-                        })
-                    end)
-
-                    -- Only proceed if the remote returned a valid item reference.
-                    -- Never fall back to a nearby ItemDrop listener — gen drops
-                    -- can be within any proximity and would get incorrectly claimed.
-                    if not (ok and dropped and dropped.Parent) then
-                        task.wait(0.3)
-                        v3Busy = false
-                        return
-                    end
-
-                    if dropped and dropped.Parent then
-                        -- Disable collision while we wait for physics to settle,
-                        -- but do NOT set CDT=9999 yet — if holdPos turns out to be
-                        -- nil the item must remain pickable by the player.
-                        pcall(function()
-                            if dropped:IsA('BasePart') then dropped.CanCollide = false end
-                            for _, part in dropped:GetDescendants() do
-                                if part:IsA('BasePart') then part.CanCollide = false end
-                            end
-                        end)
-                        task.wait(0.15)
-                        if dropped and dropped.Parent and entitylib.isAlive then
-                            local holdPos = v3GetHoldPos()
-                            if not holdPos then
-                                -- No valid hold position — release the item back so
-                                -- the player can still pick it up naturally.
-                                pcall(function()
-                                    if dropped:IsA('BasePart') then dropped.CanCollide = true end
-                                    for _, part in dropped:GetDescendants() do
-                                        if part:IsA('BasePart') then part.CanCollide = true end
-                                    end
-                                end)
-                                task.wait(0.3)
-                                v3Busy = false
-                                return
-                            end
-                            -- Hold position confirmed: now lock and teleport.
-                            dropped:SetAttribute('ClientDropTime', tick() + 9999)
-                            dropped.CFrame = CFrame.new(holdPos)
-                            table.insert(v3Frozen, { item = dropped, itemType = itemType, amount = itemAmount })
-                            v3StashedCounts[itemType] = (v3StashedCounts[itemType] or 0) + itemAmount
-                            v3UpdateUI()
-                        end
-                    end
-                    task.wait(0.3)
-                    v3Busy = false
-                end)
-                return
-            end
-        end
-    end
-
-    local function v3UnlockNearby()
-        -- Reset CDT on any ItemDrop within 20 studs that is locked far into the
-        -- future (our lock, not a normal game drop-delay). Clears orphaned items
-        -- that got CDT=9999 but were never added to v3Frozen.
-        if not entitylib.isAlive then return end
-        local pos = entitylib.character.RootPart.Position
-        local threshold = tick() + 30
-        for _, v in collectionService:GetTagged('ItemDrop') do
-            if v and v.Parent then
-                local cdt = v:GetAttribute('ClientDropTime') or 0
-                if cdt > threshold and (pos - v.Position).Magnitude <= 20 then
-                    pcall(function()
-                        v:SetAttribute('ClientDropTime', 0)
-                        if v:IsA('BasePart') then v.CanCollide = true end
-                        for _, part in v:GetDescendants() do
-                            if part:IsA('BasePart') then part.CanCollide = true end
-                        end
-                    end)
-                end
-            end
-        end
-    end
-
-    local function v3PickupNearby()
-        if not entitylib.isAlive then return end
-        local pos = entitylib.character.RootPart.Position
-        for _, v in collectionService:GetTagged('ItemDrop') do
-            if v and v.Parent and tick() - (v:GetAttribute('ClientDropTime') or 0) >= 2 then
-                if (pos - v.Position).Magnitude <= 20 then
-                    pcall(function()
-                        bedwars.Client:Get(remotes.PickupItem):CallServerAsync({ itemDrop = v })
-                    end)
-                end
-            end
-        end
-    end
-
-    local function v3DepositInventory()
-        local chest = replicatedStorage.Inventories:FindFirstChild(lplr.Name .. '_personal')
-        if not chest then return end
-        for _, v in store.inventory.inventory.items do
-            if v3IsWhitelisted(v.itemType) then
-                pcall(function()
-                    bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(chest, v.tool)
-                end)
-            end
-        end
-    end
-
-    local function v3ReleaseAll()
-        if v3Released or not entitylib.isAlive then return end
-        if #v3Frozen == 0 then return end
-        v3Released = true
-        local playerPos = entitylib.character.RootPart.Position
-        for i = #v3Frozen, 1, -1 do
-            local entry = v3Frozen[i]
-            if entry and entry.item and entry.item.Parent then
-                pcall(function()
-                    if entry.item:IsA('BasePart') then entry.item.CanCollide = true end
-                    for _, part in entry.item:GetDescendants() do
-                        if part:IsA('BasePart') then part.CanCollide = true end
-                    end
-                    entry.item.CFrame = CFrame.new(playerPos)
-                    entry.item:SetAttribute('ClientDropTime', 0)
-                end)
-            end
-            table.remove(v3Frozen, i)
-        end
-        v3StashedCounts = { iron = 0, diamond = 0, emerald = 0 }
-        v3UpdateUI()
-        v3Released = false
-    end
-
-    AutoBankV3 = vape.Categories.Inventory:CreateModule({
-        Name = 'AutoBank V3',
-        Function = function(callback)
-            v3Gui.Enabled = callback
-            if callback then
-                v3StashedCounts = { iron = 0, diamond = 0, emerald = 0 }
-                v3UpdateUI()
-                V3Chests = collection('personal-chest', AutoBankV3)
-                local lastAtChest = 0
-                repeat
-                    if entitylib.isAlive then
-                        v3CleanFrozen()
-                        local nearChest = v3NearChest()
-                        local atChest = nearChest and (not GUICheckV3.Enabled or bedwars.AppController:isAppOpen('ChestApp'))
-                        if atChest then
-                            lastAtChest = tick()
-                            v3UnlockNearby()
-                            v3ReleaseAll()
-                            v3PickupNearby()
-                            v3DepositInventory()
-                        elseif PauseAtBase.Enabled and v3AtBase() then
-                            -- at base (gen area included): idle, don't stash or maintain
-                        elseif tick() - lastAtChest < 3 then
-                            v3MaintainAll()
-                        else
-                            v3StashOne()
-                            v3MaintainAll()
-                        end
-                    end
-                    task.wait(0.05)
-                until not AutoBankV3.Enabled
-                v3Busy = false
-            end
-        end,
-        Tooltip = 'Banks whitelisted loot via suspension that preserves NetworkTP ownership'
-    })
-    GUICheckV3 = AutoBankV3:CreateToggle({
-        Name = 'GUI Check',
-        Default = true,
-        Tooltip = 'Only deposit while the personal chest UI is open'
-    })
-    PauseAtBase = AutoBankV3:CreateToggle({
-        Name = 'Pause at Base',
-        Default = true,
-        Tooltip = 'Stop stashing when near your personal chest so you can spend items freely'
-    })
-    AutoBankV3:CreateToggle({
-        Name = 'Iron',
-        Default = true,
-        Function = function(v) v3Whitelist.iron = v end
-    })
-    AutoBankV3:CreateToggle({
-        Name = 'Diamond',
-        Default = true,
-        Function = function(v) v3Whitelist.diamond = v end
-    })
-    AutoBankV3:CreateToggle({
-        Name = 'Emerald',
-        Default = true,
-        Function = function(v) v3Whitelist.emerald = v end
-    })
-    v3CustomList = AutoBankV3:CreateTextList({
-        Name = 'Custom Items',
-        Default = {},
-        Darker = true,
-    })
-end)
 
 
 run(function()
@@ -16145,6 +15492,9 @@ run(function()
         consumeText.Text = displayName
         consumeGui.Enabled = true
         playConsumeAnimation()
+        local humanoid = entitylib.isAlive and lplr.Character and lplr.Character:FindFirstChildOfClass('Humanoid')
+        local originalSpeed = humanoid and humanoid.WalkSpeed
+        if humanoid then humanoid.WalkSpeed = math.max(originalSpeed * 0.5, 0) end
         local done = false
         -- Keep the first-person drink/eat animation running for the whole hold
         -- so it looks like a genuine manual consume instead of a single flick.
@@ -16174,6 +15524,7 @@ run(function()
             task.wait()
         end
         done = true
+        if humanoid and originalSpeed then humanoid.WalkSpeed = originalSpeed end
         consumeGui.Enabled = false
         consumeFill.Size = UDim2.new(0, 0, 1, 0)
         if entitylib.isAlive and store.hand.tool and store.hand.tool.Name == name then
@@ -17306,10 +16657,10 @@ run(function()
     Delay = AutoHonor:CreateSlider({
         Name = 'Delay',
         Min = 0,
-        Max = 2,
-        Decimal = 100,
+        Max = 60,
+        Decimal = 1,
         Suffix = 'seconds',
-        Default = 0.1
+        Default = 25
     })
 end)
 
@@ -25129,533 +24480,55 @@ run(function()
         Suffix = function(val) return val == 1 and 'second' or 'seconds' end
     })
 end)
-
 run(function()
-	local AutoZola
-	local EnemyLinks
-	local LinkNPCs
-	local AllyLinks
-	local MaxEnemyLinks
-	local MaxAllyLinks
-	local EnemyRange
-	local AllyRange
-	local EnemyPriority
-	local BreakAll
+    local Resolution
+    local Width
+    local Height
+    local origW, origH = nil, nil
 
-	local LINK_MAX_RANGE    = 60   -- blocks; links break beyond this
-	local LINK_EXPIRE_SECS  = 110  -- re-link 10s before the 2-min server expiry
-
-	local ENEMY_CANDIDATES = {
-		'zola_link_enemy', 'ZOLA_LINK_ENEMY',
-		'zola_enemy_link', 'ZOLA_ENEMY_LINK',
-		'zola_link',       'ZOLA_LINK',
-		'zola_chain',      'ZOLA_CHAIN',
-		'link_enemy',      'LINK_ENEMY',
-		'zola_tether',     'ZOLA_TETHER',
-	}
-	local ALLY_CANDIDATES = {
-		'zola_link_ally',  'ZOLA_LINK_ALLY',
-		'zola_ally_link',  'ZOLA_ALLY_LINK',
-		'zola_protect',    'ZOLA_PROTECT',
-		'zola_guard',      'ZOLA_GUARD',
-		'link_ally',       'LINK_ALLY',
-		'zola_shield',     'ZOLA_SHIELD',
-	}
-	local BREAK_CANDIDATES = {
-		'zola_break_link',  'ZOLA_BREAK_LINK',
-		'zola_unlink',      'ZOLA_UNLINK',
-		'zola_clear_links', 'ZOLA_CLEAR_LINKS',
-		'zola_break',       'ZOLA_BREAK',
-	}
-
-	-- Dicts: charKey → tick() when linked. Using dicts gives O(1) lookup and
-	-- lets us store the link timestamp for automatic 2-minute re-linking.
-	local enemyLinked = {}   -- {[charKey] = linkedAt}
-	local allyLinked  = {}   -- {[charKey] = linkedAt}
-
-	local function countDict(t)
-		local n = 0
-		for _ in t do n = n + 1 end
-		return n
-	end
-
-	local function scanAbilityNames(keyword)
-		local found = {}
-		pcall(function()
-			for _, obj in {lplr.Character, lplr} do
-				if not obj then continue end
-				for _, v in obj:GetAttributes() do
-					if type(v) == 'string' and v:lower():find(keyword) and not table.find(found, v) then
-						table.insert(found, 1, v)
-					end
-				end
-			end
-		end)
-		pcall(function()
-			local ac = bedwars.AbilityController
-			if not ac then return end
-			for _, fn in {ac.canUseAbility, ac.useAbility} do
-				if type(fn) ~= 'function' then continue end
-				for i = 1, 50 do
-					local ok, _, val = pcall(debug.getupvalue, fn, i)
-					if not ok then break end
-					if type(val) ~= 'table' then continue end
-					for k in next, val do
-						if type(k) == 'string' and k:lower():find(keyword) and not table.find(found, k) then
-							table.insert(found, k)
-						end
-					end
-				end
-			end
-		end)
-		return found
-	end
-
-	local function buildOrder(candidates)
-		local ordered = {}
-		for _, v in scanAbilityNames('zola') do
-			if not table.find(ordered, v) then table.insert(ordered, v) end
-		end
-		for _, v in scanAbilityNames('link') do
-			if not table.find(ordered, v) then table.insert(ordered, v) end
-		end
-		for _, v in candidates do
-			if not table.find(ordered, v) then table.insert(ordered, v) end
-		end
-		return ordered
-	end
-
-	local function tryFireLink(candidates, ent)
-		local ac      = bedwars.AbilityController
-		if not ac then return false end
-		local ordered = buildOrder(candidates)
-		local rootPos = ent and ent.RootPart and ent.RootPart.Position
-		local char    = ent and (ent.Character or ent)
-
-		for _, name in ordered do
-			local fired
-			local ok, canUse = pcall(function() return ac:canUseAbility(name) end)
-			if not ok or not canUse then continue end
-
-			fired = false
-			if rootPos then
-				fired = pcall(function()
-					ac:useAbility(name, newproxy(true), {
-						target         = rootPos,
-						entityInstance = char,
-					})
-				end)
-			end
-			if not fired then
-				fired = pcall(function()
-					ac:useAbility(name, newproxy(true), {entityInstance = char})
-				end)
-			end
-			if not fired then
-				fired = pcall(function() ac:useAbility(name) end)
-			end
-			if fired then return true end
-		end
-
-		local ok2 = false
-		pcall(function()
-			local ctrl = bedwars.ZolaController or bedwars.ZolaKitController
-			if not ctrl then return end
-			for mname, fn in ctrl do
-				if type(fn) ~= 'function' then continue end
-				if not (mname:lower():find('link') or mname:lower():find('target')) then continue end
-				pcall(function()
-					bedwars.Client:Get(fn):SendToServer({target = char})
-					ok2 = true
-				end)
-				if ok2 then return end
-			end
-		end)
-		return ok2
-	end
-
-	local function tryBreakLinks()
-		local ac = bedwars.AbilityController
-		if not ac then return end
-		for _, name in buildOrder(BREAK_CANDIDATES) do
-			local ok, canUse = pcall(function() return ac:canUseAbility(name) end)
-			if ok and canUse then pcall(function() ac:useAbility(name) end) end
-		end
-	end
-
-	local function resetLinks()
-		tryBreakLinks()
-		table.clear(enemyLinked)
-		table.clear(allyLinked)
-	end
-
-	-- Expire entries that are dead, out of range, OR have hit the 2-min server timer.
-	-- Returns the number of slots freed so the caller can re-fill them.
-	local function pruneLinks(linked, maxRange)
-		local char = entitylib.character
-		if not char or not char.RootPart then return 0 end
-		local localPos = char.RootPart.Position
-		local now      = tick()
-		local removed  = 0
-
-		for key, linkedAt in linked do
-			local alive
-			-- Time expiry: server drops the link after 2 minutes; re-link early
-			if now - linkedAt >= LINK_EXPIRE_SECS then
-				linked[key] = nil
-				removed = removed + 1
-				continue
-			end
-			-- Range / death expiry
-			alive = false
-			for _, ent in entitylib.List do
-				if ent.Character == key then
-					if ent.RootPart and (ent.RootPart.Position - localPos).Magnitude <= maxRange then
-						alive = true
-					end
-					break
-				end
-			end
-			if not alive then
-				linked[key] = nil
-				removed = removed + 1
-			end
-		end
-		return removed
-	end
-
-	local function getAllies(maxRange)
-		local myTeam = lplr:GetAttribute('Team')
-		local char   = entitylib.character
-		if not char or not char.RootPart or not myTeam then return {} end
-		local localPos = char.RootPart.Position
-
-		local list = {}
-		for _, ent in entitylib.List do
-			local dist
-			if not ent.Player or ent.Player == lplr then continue end
-			if ent.Player:GetAttribute('Team') ~= myTeam then continue end
-			if not ent.RootPart then continue end
-			dist = (ent.RootPart.Position - localPos).Magnitude
-			if dist <= maxRange then
-				table.insert(list, {ent = ent, dist = dist})
-			end
-		end
-		table.sort(list, function(a, b) return a.dist < b.dist end)
-
-		local out = {}
-		for _, v in list do table.insert(out, v.ent) end
-		return out
-	end
-
-	-- ── Module ────────────────────────────────────────────────────────────────
-
-	AutoZola = vape.Categories.Kits:CreateModule({
-		Name     = 'Auto Zola',
-		Function = function(call)
-			if not call then
-				table.clear(enemyLinked)
-				table.clear(allyLinked)
-				return
-			end
-
-			local frame = Instance.new('Frame')
-			frame.Size                   = UDim2.fromOffset(190, 50)
-			frame.Position               = UDim2.new(0.5, -95, 1, -84)
-			frame.BackgroundColor3       = Color3.fromRGB(8, 8, 8)
-			frame.BackgroundTransparency = 0.2
-			frame.BorderSizePixel        = 0
-			frame.Parent                 = vape.gui
-			Instance.new('UICorner', frame).CornerRadius = UDim.new(0, 8)
-			local fstroke     = Instance.new('UIStroke', frame)
-			fstroke.Color     = Color3.fromRGB(150, 70, 255)
-			fstroke.Thickness = 1
-
-			local eLine = Instance.new('TextLabel')
-			eLine.Size                   = UDim2.new(1, -12, 0.5, -2)
-			eLine.Position               = UDim2.fromOffset(8, 4)
-			eLine.BackgroundTransparency = 1
-			eLine.TextColor3             = Color3.fromRGB(255, 110, 70)
-			eLine.TextSize               = 10
-			eLine.Font                   = Enum.Font.GothamBold
-			eLine.TextXAlignment         = Enum.TextXAlignment.Left
-			eLine.Text                   = 'Enemy Links: 0/8'
-			eLine.Parent                 = frame
-
-			local aLine = Instance.new('TextLabel')
-			aLine.Size                   = UDim2.new(1, -12, 0.5, -2)
-			aLine.Position               = UDim2.new(0, 8, 0.5, 2)
-			aLine.BackgroundTransparency = 1
-			aLine.TextColor3             = Color3.fromRGB(80, 200, 255)
-			aLine.TextSize               = 10
-			aLine.Font                   = Enum.Font.GothamBold
-			aLine.TextXAlignment         = Enum.TextXAlignment.Left
-			aLine.Text                   = 'Ally Links:  0/3'
-			aLine.Parent                 = frame
-
-			repeat
-				local char, localPos, maxE, maxA, curE, curA
-				if not entitylib.isAlive then
-					eLine.Text = 'Enemy Links: —'
-					aLine.Text = 'Ally Links:  —'
-					task.wait(0.2)
-					continue
-				end
-
-				char     = entitylib.character
-				localPos = char.RootPart.Position
-				maxE     = MaxEnemyLinks.Value
-				maxA     = MaxAllyLinks.Value
-
-				-- Prune expired / out-of-range / timed-out links; freed slots are
-				-- immediately eligible for re-linking on this same tick.
-				pruneLinks(enemyLinked, LINK_MAX_RANGE)
-				pruneLinks(allyLinked,  LINK_MAX_RANGE)
-
-				curE = countDict(enemyLinked)
-				curA = countDict(allyLinked)
-
-				-- Re-fill enemy links up to cap
-				if EnemyLinks.Enabled and curE < maxE then
-					local ents = entitylib.AllPosition({
-						Origin  = localPos,
-						Range   = EnemyRange.Value,
-						Part    = 'RootPart',
-						Players = true,
-						NPCs    = LinkNPCs.Enabled,
-						Limit   = maxE - curE,
-						Sort    = sortmethods[EnemyPriority.Value],
-					})
-
-					for _, ent in ents do
-						if curE >= maxE then break end
-						local key = ent.Character
-						if enemyLinked[key] then continue end
-
-						if tryFireLink(ENEMY_CANDIDATES, ent) then
-							enemyLinked[key] = tick()
-							curE = curE + 1
-							task.wait(0.05)
-						end
-					end
-				end
-
-				-- Re-fill ally links up to cap
-				if AllyLinks.Enabled and curA < maxA then
-					local allies = getAllies(AllyRange.Value)
-					for _, ent in allies do
-						if curA >= maxA then break end
-						local key = ent.Character
-						if allyLinked[key] then continue end
-
-						if tryFireLink(ALLY_CANDIDATES, ent) then
-							allyLinked[key] = tick()
-							curA = curA + 1
-							task.wait(0.05)
-						end
-					end
-				end
-
-				eLine.Text = ('Enemy Links: %d/%d'):format(curE, maxE)
-				aLine.Text = ('Ally Links:  %d/%d'):format(curA, maxA)
-
-				task.wait(0.15)
-			until not AutoZola.Enabled
-
-			frame:Destroy()
-			table.clear(enemyLinked)
-			table.clear(allyLinked)
-		end,
-		Tooltip = 'Automatically manages Zola\'s enemy and ally links; re-links when they expire'
-	})
-
-	EnemyLinks = AutoZola:CreateToggle({
-		Name    = 'Auto Enemy Links',
-		Default = true,
-		Tooltip = 'Link up to 8 nearby enemies — damage spreads to all linked targets'
-	})
-	LinkNPCs = AutoZola:CreateToggle({
-		Name    = 'Link NPCs',
-		Default = false,
-		Darker  = true,
-		Tooltip = 'Include NPCs (golems, etc.) as enemy link targets'
-	})
-	AllyLinks = AutoZola:CreateToggle({
-		Name    = 'Auto Ally Links',
-		Default = true,
-		Tooltip = 'Link up to 3 allies — halves their damage taken at cost of your health'
-	})
-	MaxEnemyLinks = AutoZola:CreateSlider({
-		Name    = 'Max Enemy Links',
-		Min     = 1,
-		Max     = 8,
-		Default = 8,
-		Suffix  = function(v) return v == 1 and 'link' or 'links' end,
-		Tooltip = 'Kit max is 8 — more links = wider damage spread per hit'
-	})
-	MaxAllyLinks = AutoZola:CreateSlider({
-		Name    = 'Max Ally Links',
-		Min     = 1,
-		Max     = 3,
-		Default = 3,
-		Suffix  = function(v) return v == 1 and 'link' or 'links' end,
-		Tooltip = 'Kit max is 3'
-	})
-	EnemyRange = AutoZola:CreateSlider({
-		Name    = 'Enemy Link Range',
-		Min     = 1,
-		Max     = 60,
-		Default = 40,
-		Suffix  = function(v) return v == 1 and 'stud' or 'studs' end,
-	})
-	AllyRange = AutoZola:CreateSlider({
-		Name    = 'Ally Link Range',
-		Min     = 1,
-		Max     = 60,
-		Default = 55,
-		Suffix  = function(v) return v == 1 and 'stud' or 'studs' end,
-		Tooltip = 'Links break beyond 60 blocks — keep this close to the limit'
-	})
-
-	local methods = {'Distance', 'Health', 'Damage'}
-	for i in sortmethods do
-		if not table.find(methods, i) then table.insert(methods, i) end
-	end
-	EnemyPriority = AutoZola:CreateDropdown({
-		Name    = 'Enemy Priority',
-		List    = methods,
-		Default = 'Distance',
-		Tooltip = 'Which enemies to prioritize when choosing link targets'
-	})
-	BreakAll = AutoZola:CreateButton({
-		Name     = 'Break All Links',
-		Tooltip  = 'Breaks all active links and resets counters',
-		Function = function()
-			resetLinks()
-		end
-	})
-end)
-
-run(function()
-    local AutoWren
-    local Rate
-
-    local captured = nil
-    local spamConns = {}
-
-    local function autoLearn()
-        local learnLog = {}
-        local learning = true
-        local old
-
-        local ok = pcall(function()
-            local mt = getrawmetatable(game)
-            old = mt.__namecall
-            setreadonly(mt, false)
-            mt.__namecall = newcclosure(function(self, ...)
-                local method = getnamecallmethod()
-                if learning and (method == 'FireServer' or method == 'InvokeServer') then
-                    if not (checkcaller and checkcaller()) then
-                        local entry = learnLog[self]
-                        if entry then
-                            entry.count = entry.count + 1
-                        else
-                            learnLog[self] = {count = 1, method = method, args = {...}}
-                        end
-                    end
-                end
-                return old(self, ...)
-            end)
-            setreadonly(mt, true)
-        end)
-
-        if not ok then
-            notif('Auto Wren', 'Hook failed — executor lacks support', 5, 'alert')
-            return false
-        end
-
-        pcall(function() bedwars.AbilityController:useAbility('open_black_market') end)
-        task.wait(0.3)
-
-        learning = false
-        pcall(function()
-            local mt = getrawmetatable(game)
-            setreadonly(mt, false)
-            mt.__namecall = old
-            setreadonly(mt, true)
-        end)
-
-        local best, bestCount
-        for remote, e in pairs(learnLog) do
-            if remote and remote.Parent then
-                if not bestCount or e.count < bestCount then
-                    best, bestCount = remote, e.count
-                end
-            end
-        end
-
-        if best then
-            local e = learnLog[best]
-            captured = {remote = best, method = e.method, args = e.args}
-            notif('Auto Wren', 'Learned: ' .. best.Name, 3, 'info')
-            return true
-        end
-        notif('Auto Wren', 'Nothing captured — wrong kit?', 5, 'alert')
-        return false
-    end
-
-    local function fireCaptured()
-        if not captured then return end
-        local r, m, a = captured.remote, captured.method, captured.args
-        if not (r and r.Parent) then return end
-        if m == 'InvokeServer' then
-            task.spawn(function() pcall(r.InvokeServer, r, unpack(a)) end)
-        else
-            pcall(r.FireServer, r, unpack(a))
+    local function applyRes()
+        if setresolution then
+            setresolution(Width.Value, Height.Value)
         end
     end
 
-    local function startSpam()
-        local function pass()
-            if not AutoWren.Enabled then return end
-            for _ = 1, Rate.Value do fireCaptured() end
-        end
-        AutoWren:Clean(runService.Heartbeat:Connect(pass))
-        pcall(function() AutoWren:Clean(runService.RenderStepped:Connect(pass)) end)
-        pcall(function() AutoWren:Clean(runService.Stepped:Connect(pass)) end)
-    end
-
-    AutoWren = vape.Categories.Kits:CreateModule({
-        Name = 'Auto Wren',
+    Resolution = vape.Categories.Utility:CreateModule({
+        Name = 'Resolution',
         Function = function(callback)
             if callback then
-                task.spawn(function()
-                    repeat task.wait() until store.equippedKit ~= '' and store.matchState ~= 0 or not AutoWren.Enabled
-                    if not AutoWren.Enabled then return end
-                    if not captured then
-                        if not autoLearn() then return end
-                    end
-                    startSpam()
-                end)
+                if setresolution then
+                    origW = workspace.CurrentCamera.ViewportSize.X
+                    origH = workspace.CurrentCamera.ViewportSize.Y
+                    applyRes()
+                else
+                    notif('Resolution', 'Not supported by this executor', 5, 'warning')
+                    Resolution:Toggle()
+                end
+            else
+                if setresolution and origW then
+                    setresolution(origW, origH)
+                    origW, origH = nil, nil
+                end
             end
         end,
-        Tooltip = 'Auto-learns Wren remote on enable, spams on Heartbeat + RenderStepped + Stepped. No button press needed.'
+        Tooltip = 'Changes the game window resolution. Restores original resolution on disable.'
     })
-
-    Rate = AutoWren:CreateSlider({
-        Name = 'Rate',
-        Min = 1,
-        Max = 1000,
-        Default = 1000,
-        Suffix = '/frame',
-        Tooltip = 'Fires per pass. Runs on Heartbeat + RenderStepped + Stepped (3 events per frame).'
-    })
-
-    AutoWren:CreateButton({
-        Name = 'Re-Learn',
-        Tooltip = 'Re-captures the remote if it broke.',
+    Width = Resolution:CreateSlider({
+        Name = 'Width',
+        Min = 640,
+        Max = 3840,
+        Default = 1920,
         Function = function()
-            task.spawn(autoLearn)
+            if Resolution.Enabled then applyRes() end
+        end
+    })
+    Height = Resolution:CreateSlider({
+        Name = 'Height',
+        Min = 360,
+        Max = 2160,
+        Default = 1080,
+        Function = function()
+            if Resolution.Enabled then applyRes() end
         end
     })
 end)
