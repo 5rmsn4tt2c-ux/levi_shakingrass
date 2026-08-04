@@ -15061,15 +15061,18 @@ run(function()
             return
         end
 
+        local invNS = bedwars.Client:GetNamespace('Inventory')
+
+        -- tell server this chest is "observed/open" so the deposit remote accepts it
         local physChest = findPhysicalChest()
-        if physChest then
-            local pp = physChest:FindFirstChildOfClass('ProximityPrompt')
-                    or physChest:FindFirstChild('ProximityPrompt', true)
-            if pp then
-                pcall(fireproximityprompt, pp)
-                task.wait(0.1)
-            end
-        end
+        pcall(function()
+            invNS:Get('SetObservedChest'):SendToServer(physChest or chestData)
+        end)
+        task.wait(0.05)
+
+        -- bypass client-side wrapper in case it has a local distance gate
+        local giveWrapper = invNS:Get('ChestGiveItem')
+        local rawRemote = giveWrapper and giveWrapper.instance
 
         local failed = 0
         local tried = 0
@@ -15077,13 +15080,23 @@ run(function()
             if v.itemType == 'iron' or v.itemType == 'diamond' or v.itemType == 'emerald' then
                 tried += 1
                 local ok = pcall(function()
-                    bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(chestData, v.tool)
+                    if rawRemote then
+                        if rawRemote.ClassName == 'RemoteFunction' then
+                            rawRemote:InvokeServer(chestData, v.tool)
+                        else
+                            rawRemote:FireServer(chestData, v.tool)
+                        end
+                    else
+                        giveWrapper:CallServer(chestData, v.tool)
+                    end
                 end)
-                if not ok then
-                    failed += 1
-                end
+                if not ok then failed += 1 end
             end
         end
+
+        pcall(function()
+            invNS:Get('SetObservedChest'):SendToServer(nil)
+        end)
 
         if tried > 0 and failed > 0 then
             notif('AutoBank v3', failed .. '/' .. tried .. ' deposits failed', 4, 'warning')
