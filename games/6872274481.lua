@@ -15043,27 +15043,50 @@ run(function()
     local AutoBankV3
     local Interval
 
+    local function findPhysicalChest()
+        for _, obj in collectionService:GetTagged('personal-chest') do
+            local owner = obj:GetAttribute('Owner') or obj:GetAttribute('PlayerId') or obj:GetAttribute('UserId')
+            if owner == lplr.UserId or owner == lplr.Name or obj.Name == lplr.Name then
+                return obj
+            end
+        end
+        return collectionService:GetTagged('personal-chest')[1]
+    end
+
     local function depositAll()
-        local chest = replicatedStorage.Inventories:FindFirstChild(lplr.Name .. '_personal')
-        if not chest then
+        if not entitylib.isAlive then return end
+        local chestData = replicatedStorage.Inventories:FindFirstChild(lplr.Name .. '_personal')
+        if not chestData then
             notif('AutoBank v3', 'Personal chest not found', 4, 'warning')
             return
         end
+
+        local physChest = findPhysicalChest()
+        if physChest then
+            local pp = physChest:FindFirstChildOfClass('ProximityPrompt')
+                    or physChest:FindFirstChild('ProximityPrompt', true)
+            if pp then
+                pcall(fireproximityprompt, pp)
+                task.wait(0.1)
+            end
+        end
+
         local failed = 0
         local tried = 0
         for _, v in store.inventory.inventory.items do
             if v.itemType == 'iron' or v.itemType == 'diamond' or v.itemType == 'emerald' then
                 tried += 1
-                local ok, err = pcall(function()
-                    bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(chest, v.tool)
+                local ok = pcall(function()
+                    bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(chestData, v.tool)
                 end)
                 if not ok then
                     failed += 1
                 end
             end
         end
+
         if tried > 0 and failed > 0 then
-            notif('AutoBank v3', failed .. '/' .. tried .. ' deposits failed (server rejected)', 4, 'warning')
+            notif('AutoBank v3', failed .. '/' .. tried .. ' deposits failed', 4, 'warning')
         end
     end
 
