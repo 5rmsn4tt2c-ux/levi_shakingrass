@@ -15045,13 +15045,25 @@ run(function()
 
     local function depositAll()
         local chest = replicatedStorage.Inventories:FindFirstChild(lplr.Name .. '_personal')
-        if not chest then return end
+        if not chest then
+            notif('AutoBank v3', 'Personal chest not found', 4, 'warning')
+            return
+        end
+        local failed = 0
+        local tried = 0
         for _, v in store.inventory.inventory.items do
             if v.itemType == 'iron' or v.itemType == 'diamond' or v.itemType == 'emerald' then
-                pcall(function()
+                tried += 1
+                local ok, err = pcall(function()
                     bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(chest, v.tool)
                 end)
+                if not ok then
+                    failed += 1
+                end
             end
+        end
+        if tried > 0 and failed > 0 then
+            notif('AutoBank v3', failed .. '/' .. tried .. ' deposits failed (server rejected)', 4, 'warning')
         end
     end
 
