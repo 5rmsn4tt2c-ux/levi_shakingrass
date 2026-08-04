@@ -85,8 +85,10 @@ local store = {
 					end
 
 					if index then
-						local rank = bedwars.Client:Get('FetchRanks'):CallServer({index.UserId})
-						if typeof(rank) == 'table' and rank[1] and rank[1].rankDivision then
+						local ok, rank = pcall(function()
+							return bedwars.Client:Get('FetchRanks'):CallServer({index.UserId})
+						end)
+						if ok and typeof(rank) == 'table' and rank[1] and rank[1].rankDivision then
 							rankCache[index] = rank[1].rankDivision
 							return rankCache[index]
 						end
