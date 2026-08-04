@@ -556,9 +556,10 @@ mainapi.Libraries = {
 local components
 components = {
 	Button = function(optionsettings, children, api)
+		local height = optionsettings.Height or 31
 		local button = Instance.new('TextButton')
 		button.Name = optionsettings.Name..'Button'
-		button.Size = UDim2.new(1, 0, 0, 31)
+		button.Size = UDim2.new(1, 0, 0, height)
 		button.BackgroundColor3 = color.Dark(children.BackgroundColor3, optionsettings.Darker and 0.02 or 0)
 		button.BorderSizePixel = 0
 		button.AutoButtonColor = false
@@ -567,7 +568,7 @@ components = {
 		button.Parent = children
 		addTooltip(button, optionsettings.Tooltip)
 		local bkg = Instance.new('Frame')
-		bkg.Size = UDim2.fromOffset(200, 27)
+		bkg.Size = UDim2.fromOffset(200, height - 4)
 		bkg.Position = UDim2.fromOffset(10, 2)
 		bkg.BackgroundColor3 = color.Light(uipallet.Main, 0.05)
 		bkg.Parent = button
@@ -1713,10 +1714,10 @@ components = {
 			Value = optionsettings.Default or '',
 			Index = 0
 		}
-		
+		local height = optionsettings.Height or 58
 		local textbox = Instance.new('TextButton')
 		textbox.Name = optionsettings.Name..'TextBox'
-		textbox.Size = UDim2.new(1, 0, 0, 58)
+		textbox.Size = UDim2.new(1, 0, 0, height)
 		textbox.BackgroundColor3 = color.Dark(children.BackgroundColor3, optionsettings.Darker and 0.02 or 0)
 		textbox.BorderSizePixel = 0
 		textbox.AutoButtonColor = false
@@ -1736,7 +1737,7 @@ components = {
 		title.Parent = textbox
 		local bkg = Instance.new('Frame')
 		bkg.Name = 'BKG'
-		bkg.Size = UDim2.new(1, -20, 0, 29)
+		bkg.Size = UDim2.new(1, -20, 0, height - 29)
 		bkg.Position = UDim2.fromOffset(10, 23)
 		bkg.BackgroundColor3 = color.Light(uipallet.Main, 0.02)
 		bkg.Parent = textbox
@@ -4478,6 +4479,7 @@ function mainapi:CreateCategoryList(categorysettings)
 	childrentwo.BackgroundTransparency = 1
 	childrentwo.BackgroundColor3 = color.Dark(uipallet.Main, 0.02)
 	childrentwo.Visible = false
+	childrentwo.LayoutOrder = 9999
 	childrentwo.Parent = children
 	local settings = Instance.new('ImageButton')
 	settings.Name = 'Settings'
@@ -4870,8 +4872,12 @@ function mainapi:CreateCategoryList(categorysettings)
 
 	for i, v in components do
 		categoryapi['Create'..i] = function(self, optionsettings)
-			return v(optionsettings, childrentwo, categoryapi)
+			local target = categorysettings.Profiles and children or childrentwo
+			return v(optionsettings, target, categoryapi)
 		end
+	end
+	if categorysettings.Profiles then
+		settings.Visible = false
 	end
 
 	addbutton.MouseEnter:Connect(function()
@@ -6191,10 +6197,12 @@ local profiles = mainapi:CreateCategoryList({
 })
 local json = profiles:CreateTextBox({
 	Name = 'JSON Config',
-	Placeholder = '[]'
+	Placeholder = '[]',
+	Height = 90
 })
 profiles:CreateButton({
 	Name = 'Import json',
+	Height = 44,
 	Function = function()
 		local success, result = pcall(function()
 			return httpService:JSONDecode(json.Value)
