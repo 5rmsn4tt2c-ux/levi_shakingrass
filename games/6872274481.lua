@@ -15085,23 +15085,29 @@ run(function()
         local giveWrapper = invNS:Get('ChestGiveItem')
         local rawRemote = giveWrapper and giveWrapper.instance
 
-        local failed = 0
+        if not rawRemote then
+            notif('AutoBank v3', 'No raw remote access', 4, 'warning')
+            return
+        end
+
+        local errored = 0
+        local rejected = 0
         local tried = 0
         for _, v in items do
             if v.itemType == 'iron' or v.itemType == 'gold' or v.itemType == 'diamond' or v.itemType == 'emerald' or v.itemType == 'void_crystal' then
                 tried += 1
-                local ok = pcall(function()
-                    if rawRemote then
-                        if rawRemote.ClassName == 'RemoteFunction' then
-                            rawRemote:InvokeServer(chestData, v.tool)
-                        else
-                            rawRemote:FireServer(chestData, v.tool)
-                        end
+                local ok, result = pcall(function()
+                    if rawRemote.ClassName == 'RemoteFunction' then
+                        return rawRemote:InvokeServer(chestData, v.tool)
                     else
-                        giveWrapper:CallServer(chestData, v.tool)
+                        rawRemote:FireServer(chestData, v.tool)
                     end
                 end)
-                if not ok then failed += 1 end
+                if not ok then
+                    errored += 1
+                elseif result == false then
+                    rejected += 1
+                end
             end
         end
 
@@ -15111,10 +15117,12 @@ run(function()
 
         if tried == 0 then
             notif('AutoBank v3', 'No resources to deposit', 3, 'info')
-        elseif failed == tried then
-            notif('AutoBank v3', 'All ' .. tried .. ' deposits blocked', 4, 'warning')
-        elseif failed > 0 then
-            notif('AutoBank v3', failed .. '/' .. tried .. ' deposits failed', 4, 'warning')
+        elseif rejected == tried then
+            notif('AutoBank v3', 'Server blocked all ' .. tried .. ' (distance?)', 4, 'warning')
+        elseif errored == tried then
+            notif('AutoBank v3', 'All ' .. tried .. ' calls errored', 4, 'warning')
+        elseif rejected > 0 or errored > 0 then
+            notif('AutoBank v3', (rejected + errored) .. '/' .. tried .. ' failed', 4, 'warning')
         else
             notif('AutoBank v3', 'Deposited ' .. tried .. ' resources', 3, 'info')
         end
