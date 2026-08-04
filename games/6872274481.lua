@@ -15093,15 +15093,9 @@ run(function()
 
         local invNS = bedwars.Client:GetNamespace('Inventory')
 
-        local physChest = findPhysicalChest()
-        if not physChest then
-            notif('AutoBank v3', 'Cannot locate your chest', 4, 'warning')
-            return
-        end
-
-        -- open the chest server-side using the correct physical chest reference
+        -- folder reference is what the server expects for ChestGiveItem
         pcall(function()
-            invNS:Get('SetObservedChest'):SendToServer(physChest)
+            invNS:Get('SetObservedChest'):SendToServer(chestData)
         end)
         task.wait(0.05)
 
@@ -15121,9 +15115,9 @@ run(function()
                 tried += 1
                 local ok, result = pcall(function()
                     if rawRemote.ClassName == 'RemoteFunction' then
-                        return rawRemote:InvokeServer(physChest, v.tool)
+                        return rawRemote:InvokeServer(chestData, v.tool)
                     else
-                        rawRemote:FireServer(physChest, v.tool)
+                        rawRemote:FireServer(chestData, v.tool)
                     end
                 end)
                 if not ok then
