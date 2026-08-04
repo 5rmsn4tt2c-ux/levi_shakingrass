@@ -15044,17 +15044,24 @@ run(function()
     local Interval
 
     local function depositAll()
+        if not entitylib.isAlive then return end
         local chest = replicatedStorage.Inventories:FindFirstChild(lplr.Name .. '_personal')
         if not chest then
             notif('AutoBank v3', 'Personal chest not found', 4, 'warning')
             return
         end
+
+        local root = entitylib.character.HumanoidRootPart
+        local originalCF = root.CFrame
+        root.CFrame = CFrame.new(chest.Position + Vector3.new(0, 3, 0))
+        task.wait()
+
         local failed = 0
         local tried = 0
         for _, v in store.inventory.inventory.items do
             if v.itemType == 'iron' or v.itemType == 'diamond' or v.itemType == 'emerald' then
                 tried += 1
-                local ok, err = pcall(function()
+                local ok = pcall(function()
                     bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(chest, v.tool)
                 end)
                 if not ok then
@@ -15062,8 +15069,11 @@ run(function()
                 end
             end
         end
+
+        root.CFrame = originalCF
+
         if tried > 0 and failed > 0 then
-            notif('AutoBank v3', failed .. '/' .. tried .. ' deposits failed (server rejected)', 4, 'warning')
+            notif('AutoBank v3', failed .. '/' .. tried .. ' deposits failed', 4, 'warning')
         end
     end
 
