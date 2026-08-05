@@ -15153,9 +15153,9 @@ run(function()
         end
     end
 
-    -- re-CFrame each pending item to a tiny staggered offset above the player.
-    -- Stagger prevents exact overlap so physics won't eject items even if
-    -- CanCollide is true.  All items stay within 1 stud so pickup always works.
+    -- re-CFrame each pending item to a staggered position while ANCHORED.
+    -- Anchored CFrame changes replicate reliably to the server — the server
+    -- trusts the position because physics isn't fighting against it.
     local function maintainPending()
         if not entitylib.isAlive then return end
         local pos = entitylib.character.RootPart.Position
@@ -15164,24 +15164,51 @@ run(function()
             if not (item and item.Parent) then
                 table.remove(pendingPickup, i)
             else
-                -- stack vertically 0.2 studs apart — 10 items = 2 studs total height
                 local offset = Vector3.new(0, (i - 1) * 0.2, 0)
-                pcall(function() item.CFrame = CFrame.new(pos + offset) end)
+                pcall(function()
+                    item.CFrame = CFrame.new(pos + offset)
+                    -- keep anchored so the server sees the item at THIS position,
+                    -- not wherever the physics engine last simulated it
+                    if item:IsA('BasePart') then item.Anchored = true end
+                    for _, part in item:GetDescendants() do
+                        if part:IsA('BasePart') then part.Anchored = true end
+                    end
+                end)
             end
         end
     end
 
-    -- fire a PickupItem call for each pending item in its own task.spawn so
-    -- all items are attempted in parallel and the main loop never blocks.
-    -- No distance/CDT check needed — these are our own items, CDT is already 0.
+    local lastPickupAttempt = 0
+    -- every 0.4s: for each pending item, spawn a task that:
+    --   1. unanchors the item (server now runs physics from the anchored position it already knows)
+    --   2. waits one frame for the unanchor to replicate
+    --   3. calls PickupItem (server sees item at player position, within range)
+    --   4. re-anchors if the server didn't consume it
     local function pickupPending()
         if not entitylib.isAlive or #pendingPickup == 0 then return end
+        if tick() - lastPickupAttempt < 0.4 then return end
+        lastPickupAttempt = tick()
         for _, item in pendingPickup do
             if item and item.Parent then
                 task.spawn(function()
                     pcall(function()
+                        if item:IsA('BasePart') then item.Anchored = false end
+                        for _, part in item:GetDescendants() do
+                            if part:IsA('BasePart') then part.Anchored = false end
+                        end
+                    end)
+                    task.wait()  -- one frame: let unanchor replicate before pickup call
+                    pcall(function()
                         bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = item})
                     end)
+                    if item and item.Parent then
+                        pcall(function()
+                            if item:IsA('BasePart') then item.Anchored = true end
+                            for _, part in item:GetDescendants() do
+                                if part:IsA('BasePart') then part.Anchored = true end
+                            end
+                        end)
+                    end
                 end)
             end
         end
@@ -15205,18 +15232,21 @@ run(function()
                         if not caught then caught = v end
                     end)
 
-                    local ok, dropped = pcall(function()
-                        return bedwars.Client:Get(remotes.DropItem):CallServer({
+                    -- trigger the drop — discard the return value; it's a
+                    -- client-predicted instance the server never sees, so
+                    -- PickupItem always fails on it and other players can't
+                    -- see it move.  The real server-replicated ItemDrop
+                    -- arrives via the signal above.
+                    pcall(function()
+                        bedwars.Client:Get(remotes.DropItem):CallServer({
                             item = item.tool,
                             amount = item.amount
                         })
                     end)
 
-                    if not (ok and dropped) then
-                        task.wait()
-                        dropped = caught
-                    end
+                    task.wait()       -- one frame for the real item to arrive
                     conn:Disconnect()
+                    local dropped = caught   -- always the real server item
 
                     if dropped and dropped.Parent then
                         pcall(function()
@@ -15419,19 +15449,19 @@ run(function()
             if item and item.Parent then
                 local offset = Vector3.new(0, idx * 0.2, 0)
                 pcall(function()
-                    -- place each item at a slightly different height so they
-                    -- don't share the same physics space — no ejection possible
+                    -- stagger height so items don't share the same physics space
+                    -- keep Anchored=true so this CFrame replicates reliably to
+                    -- the server before pickupPending unanchors for the pickup call
                     item.CFrame = CFrame.new(pos + offset)
                     item.CanCollide = false
-                    item.Anchored = false
                     if item:IsA('BasePart') then
                         item.CanCollide = false
-                        item.Anchored = false
+                        item.Anchored = true
                     end
                     for _, part in item:GetDescendants() do
                         if part:IsA('BasePart') then
                             part.CanCollide = false
-                            part.Anchored = false
+                            part.Anchored = true
                         end
                     end
                     item:SetAttribute('ClientDropTime', 0)
