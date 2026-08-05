@@ -15183,24 +15183,23 @@ run(function()
                     end
                     conn:Disconnect()
 
+                    -- No slamDown: slamming at -3000 sends the item ~450 studs
+                    -- into the void in 0.15s, making dropped.Parent go nil so
+                    -- the item never enters the frozen table (= "loot underground
+                    -- that doesn't come up").  Freeze immediately instead.
                     if dropped and dropped.Parent then
+                        local pos = getChestStashPos() or stashPos
                         pcall(function()
                             dropped:SetAttribute('ClientDropTime', tick() + 9999)
                             disableCollision(dropped)
-                            slamDown(dropped)
+                            dropped.CFrame = CFrame.new(pos)
+                            freezeParts(dropped)
                         end)
-                        task.spawn(function()
-                            task.wait(0.15)
-                            if dropped and dropped.Parent then
-                                -- recompute in case Depth slider changed while waiting
-                                local pos = getChestStashPos() or stashPos
-                                dropped.CFrame = CFrame.new(pos)
-                                freezeParts(dropped)
-                                table.insert(frozen, dropped)
-                                stashedCounts[itemType] = stashedCounts[itemType] + item.amount
-                                updateV3UI()
-                            end
-                        end)
+                        if dropped and dropped.Parent then
+                            table.insert(frozen, dropped)
+                            stashedCounts[itemType] = stashedCounts[itemType] + item.amount
+                            updateV3UI()
+                        end
                     end
                     task.wait(0.3)
                     busy = false
@@ -15373,52 +15372,62 @@ run(function()
     end
     -- ── end UI ──────────────────────────────────────────────────────────────
 
-    local function releaseAll()
+    local function releaseAndPickup()
         if released or not entitylib.isAlive then return end
         if #frozen == 0 then return end
         released = true
-        -- move all items to just below player feet while still anchored
-        -- player is at the chest so this puts items right at the chest location
-        local feetPos = entitylib.character.RootPart.CFrame * CFrame.new(0, -3, 0)
-        for _, item in frozen do
-            if item and item.Parent then
-                item.CFrame = feetPos
-            end
+
+        -- snapshot and clear the frozen table immediately so maintainFrozen
+        -- stops repositioning these items mid-pickup
+        local items = {}
+        for _, v in frozen do
+            if v and v.Parent then table.insert(items, v) end
         end
-        -- unfreeze: keep CanCollide=false so items don't collide with each other or
-        -- the island edge.  With CanCollide=true, physics ejects the overlapping stack
-        -- in random directions — some fly off the island into the void.  Without it,
-        -- items drift slowly downward under gravity (only ~10 studs/s²) giving
-        -- pickupNearby plenty of time to grab them all before any reach the void.
-        for i = #frozen, 1, -1 do
-            local item = frozen[i]
-            if item and item.Parent then
-                -- CanCollide stays false — no scatter, no island-edge ejection
+        table.clear(frozen)
+        stashedCounts = {iron = 0, diamond = 0, emerald = 0}
+        updateV3UI()
+
+        task.spawn(function()
+            -- 1. Stack every item at the player's position while still ANCHORED.
+            --    CanCollide stays false.  No physics, no scatter, no drift.
+            local stackPos = entitylib.character.RootPart.Position
+            for _, item in items do
+                if item and item.Parent then
+                    item.CFrame = CFrame.new(stackPos)
+                    item:SetAttribute('ClientDropTime', 0)
+                    -- Anchored stays true here — items are one pile, zero movement
+                end
+            end
+
+            -- 2. Pick up each item individually: briefly unanchor so the server
+            --    accepts the PickupItem call, then re-anchor if it still exists
+            --    (failed pickup) so it doesn't fall away before the next attempt.
+            for _, item in items do
+                if not (item and item.Parent) then continue end
+                if not entitylib.isAlive then break end
+                -- keep item glued to current player position each iteration
+                local curPos = entitylib.character.RootPart.Position
+                if item and item.Parent then item.CFrame = CFrame.new(curPos) end
+                -- unanchor only this one item for the pickup call
                 if item:IsA('BasePart') then item.Anchored = false end
                 for _, part in item:GetDescendants() do
                     if part:IsA('BasePart') then part.Anchored = false end
                 end
-                item:SetAttribute('ClientDropTime', 0)
-            end
-            table.remove(frozen, i)
-        end
-        stashedCounts = {iron = 0, diamond = 0, emerald = 0}
-        updateV3UI()
-        released = false
-    end
-
-    local function pickupNearby()
-        if not entitylib.isAlive then return end
-        local pos = entitylib.character.RootPart.Position
-        for _, v in collectionService:GetTagged('ItemDrop') do
-            if v and v.Parent and tick() - (v:GetAttribute('ClientDropTime') or 0) >= 2 then
-                if (pos - v.Position).Magnitude <= 20 then
-                    pcall(function()
-                        bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = v})
-                    end)
+                pcall(function()
+                    bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = item})
+                end)
+                task.wait(0.08)
+                -- re-anchor if the server didn't consume it (pickup failed)
+                if item and item.Parent then
+                    if item:IsA('BasePart') then item.Anchored = true end
+                    for _, part in item:GetDescendants() do
+                        if part:IsA('BasePart') then part.Anchored = true end
+                    end
                 end
             end
-        end
+
+            released = false
+        end)
     end
 
     local function depositInventory()
@@ -15449,8 +15458,7 @@ run(function()
                         if atChest then
                             lastChestClose = tick()
                             setV3Status('chest')
-                            releaseAll()
-                            pickupNearby()
+                            releaseAndPickup()
                             depositInventory()
                         elseif tick() - lastChestClose < 3 then
                             maintainFrozen()
