@@ -15211,28 +15211,11 @@ run(function()
         if released or not entitylib.isAlive then return end
         if #frozen == 0 then return end
         released = true
-        -- teleport all items to player feet while still anchored (stacked, above ground, no void)
-        -- player is standing at their chest when this runs so "feet" = "at chest"
-        local feetPos = entitylib.character.RootPart.CFrame * CFrame.new(0, -3, 0)
-        for _, item in frozen do
-            if item and item.Parent then
-                item.CFrame = feetPos
-            end
-        end
-        -- now unfreeze all at once (items are above ground, physics won't eject into void)
+        -- just mark items as pickup-eligible; keep them anchored underground (no teleport, no void)
+        -- pickupNearby uses extended range to reach them through the chest floor
         for i = #frozen, 1, -1 do
             local item = frozen[i]
             if item and item.Parent then
-                if item:IsA('BasePart') then
-                    item.CanCollide = true
-                    item.Anchored = false
-                end
-                for _, part in item:GetDescendants() do
-                    if part:IsA('BasePart') then
-                        part.CanCollide = true
-                        part.Anchored = false
-                    end
-                end
                 item:SetAttribute('ClientDropTime', 0)
             end
             table.remove(frozen, i)
@@ -15244,9 +15227,11 @@ run(function()
     local function pickupNearby()
         if not entitylib.isAlive then return end
         local pos = entitylib.character.RootPart.Position
+        -- range extended to cover items anchored underground (Depth studs + player height)
+        local range = Offset.Value + 12
         for _, v in collectionService:GetTagged('ItemDrop') do
             if v and v.Parent and tick() - (v:GetAttribute('ClientDropTime') or 0) >= 2 then
-                if (pos - v.Position).Magnitude <= 20 then
+                if (pos - v.Position).Magnitude <= range then
                     pcall(function()
                         bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = v})
                     end)
