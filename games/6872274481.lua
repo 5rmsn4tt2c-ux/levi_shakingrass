@@ -15047,6 +15047,7 @@ run(function()
     local GUICheck
 
     local frozen = {}
+    local scattered = {}   -- items that drifted >5 studs after release; re-CFramed to player until picked up
     local stashedCounts = {iron = 0, diamond = 0, emerald = 0}
     local busy = false
     local cachedChest = nil  -- cached chest object (not position — recomputed each call with live Depth)
@@ -15148,6 +15149,26 @@ run(function()
             if item and item.Parent then
                 item.CFrame = CFrame.new(stashPos)
                 freezeParts(item)
+            end
+        end
+    end
+
+    -- for each scattered item: re-CFrame to player (same as Pickup Range TP), then attempt pickup.
+    -- ClientDropTime=0 means vape's own Pickup Range also works on these items in parallel.
+    local function maintainScattered()
+        if not entitylib.isAlive then return end
+        local pos = entitylib.character.RootPart.Position
+        for i = #scattered, 1, -1 do
+            local item = scattered[i]
+            if not (item and item.Parent) then
+                table.remove(scattered, i)
+            else
+                pcall(function() item.CFrame = CFrame.new(pos) end)
+                task.spawn(function()
+                    pcall(function()
+                        bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = item})
+                    end)
+                end)
             end
         end
     end
@@ -15446,13 +15467,39 @@ run(function()
                 repeat
                     if entitylib.isAlive then
                         cleanupFrozen()
+                        maintainScattered()
+                        if #scattered > 0 then
+                            depositInventory()
+                        end
                         local atChest = nearChest() and (not GUICheck.Enabled or bedwars.AppController:isAppOpen('ChestApp'))
                         if atChest then
                             lastChestClose = tick()
                             setV3Status('chest')
+                            -- snapshot items + release position BEFORE frozen is cleared
+                            local releaseCenter = entitylib.character.RootPart.Position
+                            local aboutToRelease = {}
+                            for _, item in frozen do
+                                if item and item.Parent then
+                                    table.insert(aboutToRelease, item)
+                                end
+                            end
                             releaseAll()
                             pickupNearby()
                             depositInventory()
+                            -- after physics settle, detect items that scattered (moved >5 studs)
+                            if #aboutToRelease > 0 then
+                                task.spawn(function()
+                                    task.wait(0.25)
+                                    for _, item in aboutToRelease do
+                                        if item and item.Parent then
+                                            local ok, iPos = pcall(function() return item.Position end)
+                                            if ok and (iPos - releaseCenter).Magnitude > 5 then
+                                                table.insert(scattered, item)
+                                            end
+                                        end
+                                    end
+                                end)
+                            end
                         elseif tick() - lastChestClose < 3 then
                             maintainFrozen()
                         else
@@ -15467,6 +15514,7 @@ run(function()
                     task.wait(0.1)
                 until not AutoBankV3.Enabled
                 busy = false
+                scattered = {}
             end
         end,
         Tooltip = 'Stashes loot underground at your chest — stacked inside each other, released to feet on chest open'
