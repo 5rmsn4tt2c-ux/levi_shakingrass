@@ -15152,6 +15152,10 @@ run(function()
         end
     end
 
+    -- forward-declared so stashOne/releaseAll can call them before the UI block assigns the real bodies
+    local updateV3UI = function() end
+    local setV3Status = function() end
+
     local function stashOne()
         if busy or not entitylib.isAlive then return end
         local stashPos = getChestStashPos()
@@ -15194,6 +15198,7 @@ run(function()
                                 freezeParts(dropped)
                                 table.insert(frozen, dropped)
                                 stashedCounts[itemType] = stashedCounts[itemType] + item.amount
+                                updateV3UI()
                             end
                         end)
                     end
@@ -15206,6 +15211,167 @@ run(function()
     end
 
     local released = false
+
+    -- ── UI ──────────────────────────────────────────────────────────────────
+    local v3Gui = Instance.new('ScreenGui')
+    v3Gui.Name = 'AutoBankV3UI'
+    v3Gui.Parent = vape.gui
+    v3Gui.Enabled = false
+    v3Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    v3Gui.DisplayOrder = 11
+    v3Gui.ResetOnSpawn = false
+
+    -- panel
+    local v3Panel = Instance.new('Frame')
+    v3Panel.Parent = v3Gui
+    v3Panel.BackgroundColor3 = Color3.fromRGB(10, 11, 18)
+    v3Panel.BackgroundTransparency = 0.05
+    v3Panel.BorderSizePixel = 0
+    v3Panel.Position = UDim2.new(0, 8, 1, -8)
+    v3Panel.Size = UDim2.new(0, 162, 0, 124)
+    v3Panel.AnchorPoint = Vector2.new(0, 1)
+    Instance.new('UICorner', v3Panel).CornerRadius = UDim.new(0, 10)
+
+    local v3Stroke = Instance.new('UIStroke')
+    v3Stroke.Color = Color3.fromRGB(70, 85, 130)
+    v3Stroke.Thickness = 1
+    v3Stroke.Transparency = 0.45
+    v3Stroke.Parent = v3Panel
+
+    -- accent bar (top edge)
+    local accentBar = Instance.new('Frame')
+    accentBar.Parent = v3Panel
+    accentBar.BackgroundColor3 = Color3.fromRGB(90, 145, 255)
+    accentBar.BorderSizePixel = 0
+    accentBar.Position = UDim2.new(0, 0, 0, 0)
+    accentBar.Size = UDim2.new(1, 0, 0, 2)
+    Instance.new('UICorner', accentBar).CornerRadius = UDim.new(0, 10)
+
+    -- header: title + status dot
+    local v3Title = Instance.new('TextLabel')
+    v3Title.Parent = v3Panel
+    v3Title.BackgroundTransparency = 1
+    v3Title.Position = UDim2.new(0, 10, 0, 7)
+    v3Title.Size = UDim2.new(1, -30, 0, 16)
+    v3Title.Text = 'AutoBank  v3'
+    v3Title.TextColor3 = Color3.fromRGB(220, 228, 255)
+    v3Title.TextSize = 12
+    v3Title.Font = Enum.Font.GothamBold
+    v3Title.TextXAlignment = Enum.TextXAlignment.Left
+
+    local statusDot = Instance.new('Frame')
+    statusDot.Parent = v3Panel
+    statusDot.BackgroundColor3 = Color3.fromRGB(80, 200, 120)
+    statusDot.BorderSizePixel = 0
+    statusDot.Position = UDim2.new(1, -16, 0, 12)
+    statusDot.Size = UDim2.new(0, 8, 0, 8)
+    Instance.new('UICorner', statusDot).CornerRadius = UDim.new(1, 0)
+
+    -- divider
+    local divider = Instance.new('Frame')
+    divider.Parent = v3Panel
+    divider.BackgroundColor3 = Color3.fromRGB(55, 62, 95)
+    divider.BorderSizePixel = 0
+    divider.Position = UDim2.new(0, 10, 0, 27)
+    divider.Size = UDim2.new(1, -20, 0, 1)
+
+    -- resource row factory
+    local v3IronCount, v3DiamondCount, v3EmeraldCount
+
+    local function makeRow(yOff, iconType, label, badgeColor)
+        local row = Instance.new('Frame')
+        row.Parent = v3Panel
+        row.BackgroundColor3 = Color3.fromRGB(22, 25, 42)
+        row.BackgroundTransparency = 0.25
+        row.BorderSizePixel = 0
+        row.Position = UDim2.new(0, 8, 0, yOff)
+        row.Size = UDim2.new(1, -16, 0, 26)
+        Instance.new('UICorner', row).CornerRadius = UDim.new(0, 6)
+
+        local icon = Instance.new('ImageLabel')
+        icon.Parent = row
+        icon.BackgroundTransparency = 1
+        icon.Position = UDim2.new(0, 4, 0.5, -10)
+        icon.Size = UDim2.new(0, 20, 0, 20)
+        pcall(function() icon.Image = bedwars.getIcon({itemType = iconType}, true) end)
+
+        local nameLabel = Instance.new('TextLabel')
+        nameLabel.Parent = row
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Position = UDim2.new(0, 28, 0, 0)
+        nameLabel.Size = UDim2.new(1, -76, 1, 0)
+        nameLabel.Text = label
+        nameLabel.TextColor3 = Color3.fromRGB(170, 178, 210)
+        nameLabel.TextSize = 11
+        nameLabel.Font = Enum.Font.Gotham
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+        local badge = Instance.new('Frame')
+        badge.Parent = row
+        badge.BackgroundColor3 = badgeColor
+        badge.BackgroundTransparency = 0.55
+        badge.BorderSizePixel = 0
+        badge.Position = UDim2.new(1, -42, 0.5, -11)
+        badge.Size = UDim2.new(0, 36, 0, 22)
+        Instance.new('UICorner', badge).CornerRadius = UDim.new(0, 5)
+
+        local v3Stroke2 = Instance.new('UIStroke')
+        v3Stroke2.Color = badgeColor
+        v3Stroke2.Thickness = 1
+        v3Stroke2.Transparency = 0.6
+        v3Stroke2.Parent = badge
+
+        local count = Instance.new('TextLabel')
+        count.Parent = badge
+        count.BackgroundTransparency = 1
+        count.Size = UDim2.new(1, 0, 1, 0)
+        count.Text = '0'
+        count.TextColor3 = Color3.fromRGB(240, 245, 255)
+        count.TextSize = 12
+        count.Font = Enum.Font.GothamBold
+
+        return count
+    end
+
+    v3IronCount    = makeRow(32, 'iron',    'Iron',    Color3.fromRGB(190, 190, 190))
+    v3DiamondCount = makeRow(62, 'diamond', 'Diamond', Color3.fromRGB(80,  165, 255))
+    v3EmeraldCount = makeRow(92, 'emerald', 'Emerald', Color3.fromRGB(60,  210,  90))
+
+    -- status label (bottom strip)
+    local v3StatusLabel = Instance.new('TextLabel')
+    v3StatusLabel.Parent = v3Panel
+    v3StatusLabel.BackgroundTransparency = 1
+    v3StatusLabel.Position = UDim2.new(0, 10, 1, -17)
+    v3StatusLabel.Size = UDim2.new(1, -20, 0, 13)
+    v3StatusLabel.Text = '● Stashing'
+    v3StatusLabel.TextColor3 = Color3.fromRGB(90, 150, 255)
+    v3StatusLabel.TextSize = 10
+    v3StatusLabel.Font = Enum.Font.Gotham
+    v3StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- assign real bodies to the forward-declared upvalues
+    updateV3UI = function()
+        v3IronCount.Text    = tostring(stashedCounts.iron)
+        v3DiamondCount.Text = tostring(stashedCounts.diamond)
+        v3EmeraldCount.Text = tostring(stashedCounts.emerald)
+    end
+
+    setV3Status = function(state)
+        if state == 'stashing' then
+            v3StatusLabel.Text      = '● Stashing'
+            v3StatusLabel.TextColor3 = Color3.fromRGB(90, 150, 255)
+            statusDot.BackgroundColor3 = Color3.fromRGB(90, 150, 255)
+        elseif state == 'chest' then
+            v3StatusLabel.Text      = '● At chest'
+            v3StatusLabel.TextColor3 = Color3.fromRGB(60, 210, 90)
+            statusDot.BackgroundColor3 = Color3.fromRGB(60, 210, 90)
+        elseif state == 'idle' then
+            v3StatusLabel.Text      = '○ Idle'
+            v3StatusLabel.TextColor3 = Color3.fromRGB(100, 105, 140)
+            statusDot.BackgroundColor3 = Color3.fromRGB(70, 74, 110)
+        end
+    end
+    -- ── end UI ──────────────────────────────────────────────────────────────
 
     local function releaseAll()
         if released or not entitylib.isAlive then return end
@@ -15238,6 +15404,7 @@ run(function()
             table.remove(frozen, i)
         end
         stashedCounts = {iron = 0, diamond = 0, emerald = 0}
+        updateV3UI()
         released = false
     end
 
@@ -15270,25 +15437,32 @@ run(function()
     AutoBankV3 = vape.Categories.Inventory:CreateModule({
         Name = 'AutoBank v3',
         Function = function(callback)
+            v3Gui.Enabled = callback
             if callback then
                 cachedChest = nil
                 stashedCounts = {iron = 0, diamond = 0, emerald = 0}
                 lastChestClose = 0
+                updateV3UI()
                 repeat
                     if entitylib.isAlive then
                         cleanupFrozen()
                         local atChest = nearChest() and (not GUICheck.Enabled or bedwars.AppController:isAppOpen('ChestApp'))
                         if atChest then
                             lastChestClose = tick()
+                            setV3Status('chest')
                             releaseAll()
                             pickupNearby()
                             depositInventory()
                         elseif tick() - lastChestClose < 3 then
                             maintainFrozen()
                         else
+                            local hadItems = #frozen > 0 or (stashedCounts.iron + stashedCounts.diamond + stashedCounts.emerald) > 0
+                            setV3Status(hadItems and 'stashing' or 'idle')
                             stashOne()
                             maintainFrozen()
                         end
+                    else
+                        setV3Status('idle')
                     end
                     task.wait(0.1)
                 until not AutoBankV3.Enabled
