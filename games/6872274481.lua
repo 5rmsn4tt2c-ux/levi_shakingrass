@@ -15114,14 +15114,6 @@ run(function()
         end
     end
 
-    local function slamDown(obj)
-        local v = Vector3.new(0, -3000, 0)
-        if obj:IsA('BasePart') then obj.Velocity = v end
-        for _, part in obj:GetDescendants() do
-            if part:IsA('BasePart') then part.Velocity = v end
-        end
-    end
-
     local function nearChest()
         if not entitylib.isAlive then return false end
         local pos = entitylib.character.RootPart.Position
@@ -15179,23 +15171,22 @@ run(function()
                     end
                     conn:Disconnect()
 
+                    -- No slamDown — slamming at -3000 velocity sends the item ~450 studs
+                    -- into the void before we can CFrame it, causing dropped.Parent to go
+                    -- nil and the item to never enter the frozen table.
+                    -- Instead: immediately disable collision, CFrame to stash, freeze.
                     if dropped and dropped.Parent then
+                        local pos = getChestStashPos() or stashPos
                         pcall(function()
                             dropped:SetAttribute('ClientDropTime', tick() + 9999)
                             disableCollision(dropped)
-                            slamDown(dropped)
+                            dropped.CFrame = CFrame.new(pos)
+                            freezeParts(dropped)
                         end)
-                        task.spawn(function()
-                            task.wait(0.15)
-                            if dropped and dropped.Parent then
-                                -- recompute in case Depth slider changed while waiting
-                                local pos = getChestStashPos() or stashPos
-                                dropped.CFrame = CFrame.new(pos)
-                                freezeParts(dropped)
-                                table.insert(frozen, dropped)
-                                stashedCounts[itemType] = stashedCounts[itemType] + item.amount
-                            end
-                        end)
+                        if dropped and dropped.Parent then
+                            table.insert(frozen, dropped)
+                            stashedCounts[itemType] = stashedCounts[itemType] + item.amount
+                        end
                     end
                     task.wait(0.3)
                     busy = false
@@ -15211,12 +15202,16 @@ run(function()
         if released or not entitylib.isAlive then return end
         if #frozen == 0 then return end
         released = true
-        -- mark items pickup-eligible and unanchor them so the server's physics check passes
-        -- CanCollide stays false → items fall very slowly (not a void risk within a few ticks)
+        -- Move items to 3 studs below player feet (CanCollide=false → invisible underground,
+        -- no geometry ejection).  This puts them within the server's ~10-stud pickup range
+        -- even if the chest is several studs away from the player's center.
+        local playerPos = entitylib.character.RootPart.Position
+        local pickupPos = playerPos - Vector3.new(0, 3, 0)
         for i = #frozen, 1, -1 do
             local item = frozen[i]
             if item and item.Parent then
                 item:SetAttribute('ClientDropTime', 0)
+                item.CFrame = CFrame.new(pickupPos)
                 if item:IsA('BasePart') then item.Anchored = false end
                 for _, part in item:GetDescendants() do
                     if part:IsA('BasePart') then part.Anchored = false end
@@ -15231,29 +15226,15 @@ run(function()
     local function pickupNearby()
         if not entitylib.isAlive then return end
         local pos = entitylib.character.RootPart.Position
-        local range = Offset.Value + 12
         for _, v in collectionService:GetTagged('ItemDrop') do
             if v and v.Parent and tick() - (v:GetAttribute('ClientDropTime') or 0) >= 2 then
-                if (pos - v.Position).Magnitude <= range then
+                local ok, dist = pcall(function() return (pos - v.Position).Magnitude end)
+                if ok and dist <= 10 then
                     local vRef = v
                     task.spawn(function()
-                        -- ensure unanchored before remote fires (server physics check)
-                        if vRef.Parent then
-                            if vRef:IsA('BasePart') then vRef.Anchored = false end
-                            for _, part in vRef:GetDescendants() do
-                                if part:IsA('BasePart') then part.Anchored = false end
-                            end
-                        end
                         pcall(function()
                             bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = vRef})
                         end)
-                        -- re-anchor survivor so it can't drift into the void
-                        if vRef.Parent then
-                            if vRef:IsA('BasePart') then vRef.Anchored = true end
-                            for _, part in vRef:GetDescendants() do
-                                if part:IsA('BasePart') then part.Anchored = true end
-                            end
-                        end
                     end)
                 end
             end
