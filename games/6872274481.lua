@@ -15047,7 +15047,7 @@ run(function()
     local GUICheck
 
     local frozen = {}
-    local pendingPickup = {}  -- items released from frozen, staggered at player until picked up
+    local pendingPickup = {}
     local stashedCounts = {iron = 0, diamond = 0, emerald = 0}
     local busy = false
     local cachedChest = nil  -- cached chest object (not position — recomputed each call with live Depth)
@@ -15153,9 +15153,6 @@ run(function()
         end
     end
 
-    -- re-CFrame each pending item to a staggered position while ANCHORED.
-    -- Anchored CFrame changes replicate reliably to the server — the server
-    -- trusts the position because physics isn't fighting against it.
     local function maintainPending()
         if not entitylib.isAlive then return end
         local pos = entitylib.character.RootPart.Position
@@ -15164,52 +15161,7 @@ run(function()
             if not (item and item.Parent) then
                 table.remove(pendingPickup, i)
             else
-                local offset = Vector3.new(0, (i - 1) * 0.2, 0)
-                pcall(function()
-                    item.CFrame = CFrame.new(pos + offset)
-                    -- keep anchored so the server sees the item at THIS position,
-                    -- not wherever the physics engine last simulated it
-                    if item:IsA('BasePart') then item.Anchored = true end
-                    for _, part in item:GetDescendants() do
-                        if part:IsA('BasePart') then part.Anchored = true end
-                    end
-                end)
-            end
-        end
-    end
-
-    local lastPickupAttempt = 0
-    -- every 0.4s: for each pending item, spawn a task that:
-    --   1. unanchors the item (server now runs physics from the anchored position it already knows)
-    --   2. waits one frame for the unanchor to replicate
-    --   3. calls PickupItem (server sees item at player position, within range)
-    --   4. re-anchors if the server didn't consume it
-    local function pickupPending()
-        if not entitylib.isAlive or #pendingPickup == 0 then return end
-        if tick() - lastPickupAttempt < 0.4 then return end
-        lastPickupAttempt = tick()
-        for _, item in pendingPickup do
-            if item and item.Parent then
-                task.spawn(function()
-                    pcall(function()
-                        if item:IsA('BasePart') then item.Anchored = false end
-                        for _, part in item:GetDescendants() do
-                            if part:IsA('BasePart') then part.Anchored = false end
-                        end
-                    end)
-                    task.wait()  -- one frame: let unanchor replicate before pickup call
-                    pcall(function()
-                        bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = item})
-                    end)
-                    if item and item.Parent then
-                        pcall(function()
-                            if item:IsA('BasePart') then item.Anchored = true end
-                            for _, part in item:GetDescendants() do
-                                if part:IsA('BasePart') then part.Anchored = true end
-                            end
-                        end)
-                    end
-                end)
+                pcall(function() item.CFrame = CFrame.new(pos) end)
             end
         end
     end
@@ -15443,31 +15395,24 @@ run(function()
         if #frozen == 0 then return end
         released = true
         local pos = entitylib.character.RootPart.Position
-        local idx = 0
         for i = #frozen, 1, -1 do
             local item = frozen[i]
             if item and item.Parent then
-                local offset = Vector3.new(0, idx * 0.2, 0)
                 pcall(function()
-                    -- stagger height so items don't share the same physics space
-                    -- keep Anchored=true so this CFrame replicates reliably to
-                    -- the server before pickupPending unanchors for the pickup call
-                    item.CFrame = CFrame.new(pos + offset)
-                    item.CanCollide = false
+                    item.CFrame = CFrame.new(pos)
                     if item:IsA('BasePart') then
                         item.CanCollide = false
-                        item.Anchored = true
+                        item.Anchored = false
                     end
                     for _, part in item:GetDescendants() do
                         if part:IsA('BasePart') then
                             part.CanCollide = false
-                            part.Anchored = true
+                            part.Anchored = false
                         end
                     end
                     item:SetAttribute('ClientDropTime', 0)
                 end)
                 table.insert(pendingPickup, item)
-                idx += 1
             end
             table.remove(frozen, i)
         end
@@ -15514,9 +15459,10 @@ run(function()
                 repeat
                     if entitylib.isAlive then
                         cleanupFrozen()
-                        -- re-CFrame pending items to staggered positions, pick up in parallel
                         maintainPending()
-                        pickupPending()
+                        if #pendingPickup > 0 then
+                            pickupNearby()
+                        end
                         local atChest = nearChest() and (not GUICheck.Enabled or bedwars.AppController:isAppOpen('ChestApp'))
                         if atChest then
                             lastChestClose = tick()
