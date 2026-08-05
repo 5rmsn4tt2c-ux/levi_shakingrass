@@ -15377,27 +15377,26 @@ run(function()
         if released or not entitylib.isAlive then return end
         if #frozen == 0 then return end
         released = true
-        -- teleport all items to player feet while still anchored (stacked, above ground, no void)
-        -- player is standing at their chest when this runs so "feet" = "at chest"
+        -- move all items to just below player feet while still anchored
+        -- player is at the chest so this puts items right at the chest location
         local feetPos = entitylib.character.RootPart.CFrame * CFrame.new(0, -3, 0)
         for _, item in frozen do
             if item and item.Parent then
                 item.CFrame = feetPos
             end
         end
-        -- now unfreeze all at once (items are above ground, physics won't eject into void)
+        -- unfreeze: keep CanCollide=false so items don't collide with each other or
+        -- the island edge.  With CanCollide=true, physics ejects the overlapping stack
+        -- in random directions — some fly off the island into the void.  Without it,
+        -- items drift slowly downward under gravity (only ~10 studs/s²) giving
+        -- pickupNearby plenty of time to grab them all before any reach the void.
         for i = #frozen, 1, -1 do
             local item = frozen[i]
             if item and item.Parent then
-                if item:IsA('BasePart') then
-                    item.CanCollide = true
-                    item.Anchored = false
-                end
+                -- CanCollide stays false — no scatter, no island-edge ejection
+                if item:IsA('BasePart') then item.Anchored = false end
                 for _, part in item:GetDescendants() do
-                    if part:IsA('BasePart') then
-                        part.CanCollide = true
-                        part.Anchored = false
-                    end
+                    if part:IsA('BasePart') then part.Anchored = false end
                 end
                 item:SetAttribute('ClientDropTime', 0)
             end
