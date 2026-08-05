@@ -15043,19 +15043,29 @@ end)
 
 run(function()
     local AutoBankV3
-    local Interval
+    local Offset
+    local ReleaseDepth
 
-    local function findPhysicalChest()
-        -- try owner attribute first (some modes set it)
+    local frozen = {}
+    local stashedCounts = {iron = 0, diamond = 0, emerald = 0}
+    local busy = false
+    local chestPos = nil
+    local lastChestClose = 0
+    local resourceTypes = {'emerald', 'diamond', 'iron'}
+
+    local function getMyChestPos()
+        -- try owner attribute first
         for _, obj in collectionService:GetTagged('personal-chest') do
             local owner = obj:GetAttribute('Owner') or obj:GetAttribute('PlayerId') or obj:GetAttribute('UserId')
             if owner == lplr.UserId or owner == lplr.Name then
-                return obj
+                local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA('BasePart')
+                if not part and obj:IsA('BasePart') then part = obj end
+                if part then return part.Position end
             end
         end
-        -- fall back: find chest nearest to our team's spawn (personal chests sit at team bases)
+        -- fallback: find chest nearest to our team spawn
         local team = lplr:GetAttribute('Team') or 1
-        local spawnCF = workspace.MapCFrames:FindFirstChild(team .. '_spawn')
+        local spawnCF = workspace.MapCFrames and workspace.MapCFrames:FindFirstChild(team .. '_spawn')
         if spawnCF and spawnCF.Value then
             local spawnPos = spawnCF.Value.Position
             local best, bestDist
@@ -15063,115 +15073,209 @@ run(function()
                 local ok, pos = pcall(function() return obj.Position end)
                 if ok and pos then
                     local d = (spawnPos - pos).Magnitude
-                    if not best or d < bestDist then
-                        best = obj
-                        bestDist = d
-                    end
+                    if not best or d < bestDist then best = obj; bestDist = d end
                 end
             end
-            if best then return best end
+            if best then
+                local part = best.PrimaryPart or best:FindFirstChildWhichIsA('BasePart')
+                if not part and best:IsA('BasePart') then part = best end
+                if part then return part.Position end
+            end
         end
         return nil
     end
 
-    local function getChestPrimaryPart(physChest)
-        if not physChest then return nil end
-        if physChest:IsA('BasePart') then return physChest end
-        return physChest.PrimaryPart or physChest:FindFirstChildWhichIsA('BasePart')
+    local function freezeParts(obj)
+        if obj:IsA('BasePart') then
+            obj.Velocity = Vector3.zero
+            obj.RotVelocity = Vector3.zero
+            obj.CanCollide = false
+            obj.Anchored = true
+        end
+        for _, part in obj:GetDescendants() do
+            if part:IsA('BasePart') then
+                part.Velocity = Vector3.zero
+                part.RotVelocity = Vector3.zero
+                part.CanCollide = false
+                part.Anchored = true
+            end
+        end
     end
 
-    local function depositAll()
-        if not entitylib.isAlive then
-            notif('AutoBank v3', 'Not alive', 3, 'info')
-            return
+    local function unfreezeParts(obj)
+        if obj:IsA('BasePart') then
+            obj.CanCollide = true
+            obj.Anchored = false
         end
-
-        local inv = store.inventory and store.inventory.inventory
-        local items = inv and inv.items
-        if not items then
-            notif('AutoBank v3', 'Inventory not ready', 3, 'warning')
-            return
-        end
-
-        local chestData = replicatedStorage.Inventories:FindFirstChild(lplr.Name .. '_personal')
-        if not chestData then
-            notif('AutoBank v3', 'Personal chest not found', 4, 'warning')
-            return
-        end
-
-        -- bring chest to player so server distance check passes
-        local physChest = findPhysicalChest()
-        local chestPart = getChestPrimaryPart(physChest)
-        local savedCFrame
-        if chestPart and entitylib.character and entitylib.character.RootPart then
-            savedCFrame = chestPart.CFrame
-            local playerCF = entitylib.character.RootPart.CFrame
-            pcall(function()
-                chestPart.CFrame = playerCF * CFrame.new(0, 0, -3)
-            end)
-            task.wait(0.05) -- allow one replication cycle
-        end
-
-        local invNS = bedwars.Client:GetNamespace('Inventory')
-
-        -- folder reference is what the server expects for ChestGiveItem
-        pcall(function()
-            invNS:Get('SetObservedChest'):SendToServer(chestData)
-        end)
-        task.wait(0.05)
-
-        local giveWrapper = invNS:Get('ChestGiveItem')
-        local rawRemote = giveWrapper and giveWrapper.instance
-
-        if not rawRemote then
-            -- restore chest before returning
-            if chestPart and savedCFrame then
-                pcall(function() chestPart.CFrame = savedCFrame end)
+        for _, part in obj:GetDescendants() do
+            if part:IsA('BasePart') then
+                part.CanCollide = true
+                part.Anchored = false
             end
-            notif('AutoBank v3', 'No raw remote access', 4, 'warning')
-            return
         end
+    end
 
-        local errored = 0
-        local rejected = 0
-        local tried = 0
-        for _, v in items do
-            if v.itemType == 'iron' or v.itemType == 'gold' or v.itemType == 'diamond' or v.itemType == 'emerald' or v.itemType == 'void_crystal' then
-                tried += 1
-                local ok, result = pcall(function()
-                    if rawRemote.ClassName == 'RemoteFunction' then
-                        return rawRemote:InvokeServer(chestData, v.tool)
-                    else
-                        rawRemote:FireServer(chestData, v.tool)
+    local function disableCollision(obj)
+        if obj:IsA('BasePart') then obj.CanCollide = false end
+        for _, part in obj:GetDescendants() do
+            if part:IsA('BasePart') then part.CanCollide = false end
+        end
+    end
+
+    local function slamDown(obj)
+        local v = Vector3.new(0, -3000, 0)
+        if obj:IsA('BasePart') then obj.Velocity = v end
+        for _, part in obj:GetDescendants() do
+            if part:IsA('BasePart') then part.Velocity = v end
+        end
+    end
+
+    local v3RayParams = RaycastParams.new()
+    v3RayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+    local function getUnderBlock()
+        if not entitylib.isAlive then return nil end
+        local root = entitylib.character.RootPart
+        v3RayParams.FilterDescendantsInstances = {lplr.Character}
+        local ray = workspace:Raycast(root.Position, Vector3.new(0, -50, 0), v3RayParams)
+        if ray then
+            return ray.Position - Vector3.new(0, ReleaseDepth.Value, 0)
+        end
+        return root.Position - Vector3.new(0, 10, 0)
+    end
+
+    local function nearChest()
+        if not entitylib.isAlive then return false end
+        local pos = entitylib.character.RootPart.Position
+        for _, obj in collectionService:GetTagged('personal-chest') do
+            local ok, objPos = pcall(function() return obj.Position end)
+            if ok and (objPos - pos).Magnitude < 20 then return true end
+        end
+        return false
+    end
+
+    local function cleanupFrozen()
+        for i = #frozen, 1, -1 do
+            if not frozen[i] or not frozen[i].Parent then
+                table.remove(frozen, i)
+            end
+        end
+    end
+
+    local function maintainFrozen()
+        if not entitylib.isAlive then return end
+        if not chestPos then chestPos = getMyChestPos() end
+        local anchorTarget = chestPos or entitylib.character.RootPart.Position
+        for _, item in frozen do
+            if item and item.Parent then
+                item.CFrame = CFrame.new(anchorTarget - Vector3.new(0, Offset.Value, 0))
+                freezeParts(item)
+            end
+        end
+    end
+
+    local function stashOne()
+        if busy or not entitylib.isAlive then return end
+        for _, itemType in resourceTypes do
+            local item = getItem(itemType)
+            if item then
+                busy = true
+                task.spawn(function()
+                    local caught
+                    local conn = collectionService:GetInstanceAddedSignal('ItemDrop'):Connect(function(v)
+                        if not caught then caught = v end
+                    end)
+
+                    local ok, dropped = pcall(function()
+                        return bedwars.Client:Get(remotes.DropItem):CallServer({
+                            item = item.tool,
+                            amount = item.amount
+                        })
+                    end)
+
+                    if not (ok and dropped) then
+                        task.wait()
+                        dropped = caught
                     end
+                    conn:Disconnect()
+
+                    if dropped and dropped.Parent then
+                        pcall(function()
+                            dropped:SetAttribute('ClientDropTime', tick() + 9999)
+                            disableCollision(dropped)
+                            slamDown(dropped)
+                        end)
+                        task.spawn(function()
+                            task.wait(0.15)
+                            if dropped and dropped.Parent then
+                                if entitylib.isAlive then
+                                    if not chestPos then chestPos = getMyChestPos() end
+                                    local anchorTarget = chestPos or entitylib.character.RootPart.Position
+                                    dropped.CFrame = CFrame.new(anchorTarget - Vector3.new(0, Offset.Value, 0))
+                                end
+                                freezeParts(dropped)
+                                table.insert(frozen, dropped)
+                                stashedCounts[itemType] = stashedCounts[itemType] + item.amount
+                            end
+                        end)
+                    end
+                    task.wait(0.3)
+                    busy = false
                 end)
-                if not ok then
-                    errored += 1
-                elseif result == false then
-                    rejected += 1
+                return
+            end
+        end
+    end
+
+    local released = false
+
+    local function releaseAll()
+        if released or not entitylib.isAlive then return end
+        if #frozen == 0 then return end
+        released = true
+        local hidePos = getUnderBlock()
+        -- pass 1: stack all items at the same spot while still anchored
+        for _, item in frozen do
+            if item and item.Parent then
+                item.CFrame = CFrame.new(hidePos)
+            end
+        end
+        -- pass 2: unfreeze all (physics kicks in after they are already stacked)
+        for i = #frozen, 1, -1 do
+            local item = frozen[i]
+            if item and item.Parent then
+                unfreezeParts(item)
+                item:SetAttribute('ClientDropTime', 0)
+            end
+            table.remove(frozen, i)
+        end
+        stashedCounts = {iron = 0, diamond = 0, emerald = 0}
+        released = false
+    end
+
+    local function pickupNearby()
+        if not entitylib.isAlive then return end
+        local pos = entitylib.character.RootPart.Position
+        for _, v in collectionService:GetTagged('ItemDrop') do
+            if v and v.Parent and tick() - (v:GetAttribute('ClientDropTime') or 0) >= 2 then
+                if (pos - v.Position).Magnitude <= 20 then
+                    pcall(function()
+                        bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = v})
+                    end)
                 end
             end
         end
+    end
 
-        pcall(function()
-            invNS:Get('SetObservedChest'):SendToServer(nil)
-        end)
-
-        -- restore chest to original position
-        if chestPart and savedCFrame then
-            pcall(function() chestPart.CFrame = savedCFrame end)
-        end
-
-        if tried == 0 then
-            notif('AutoBank v3', 'No resources to deposit', 3, 'info')
-        elseif rejected == tried then
-            notif('AutoBank v3', 'Server blocked all ' .. tried .. ' (distance?)', 4, 'warning')
-        elseif errored == tried then
-            notif('AutoBank v3', 'All ' .. tried .. ' calls errored', 4, 'warning')
-        elseif rejected > 0 or errored > 0 then
-            notif('AutoBank v3', (rejected + errored) .. '/' .. tried .. ' failed', 4, 'warning')
-        else
-            notif('AutoBank v3', 'Deposited ' .. tried .. ' resources', 3, 'info')
+    local function depositInventory()
+        local chest = replicatedStorage.Inventories:FindFirstChild(lplr.Name .. '_personal')
+        if not chest then return end
+        for _, v in store.inventory.inventory.items do
+            if v.itemType == 'iron' or v.itemType == 'diamond' or v.itemType == 'emerald' then
+                pcall(function()
+                    bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(chest, v.tool)
+                end)
+            end
         end
     end
 
@@ -15179,26 +15283,49 @@ run(function()
         Name = 'AutoBank v3',
         Function = function(callback)
             if callback then
+                chestPos = nil
+                stashedCounts = {iron = 0, diamond = 0, emerald = 0}
+                lastChestClose = 0
                 repeat
                     if entitylib.isAlive then
-                        depositAll()
+                        cleanupFrozen()
+                        if nearChest() then
+                            lastChestClose = tick()
+                            releaseAll()
+                            pickupNearby()
+                            depositInventory()
+                        elseif tick() - lastChestClose < 3 then
+                            maintainFrozen()
+                        else
+                            stashOne()
+                            maintainFrozen()
+                        end
                     end
-                    task.wait(Interval.Value)
+                    task.wait(0.1)
                 until not AutoBankV3.Enabled
+                busy = false
             end
         end,
-        Tooltip = 'Deposits resources directly into your chest remotely — no dropping required'
+        Tooltip = 'Phases loot underground at your chest — items wait at base and deposit on return'
     })
-    Interval = AutoBankV3:CreateSlider({
-        Name = 'Interval',
-        Min = 0.5,
+    Offset = AutoBankV3:CreateSlider({
+        Name = 'Depth',
+        Min = 50,
+        Max = 500,
+        Default = 300,
+        Suffix = function(val)
+            return val == 1 and 'stud' or 'studs'
+        end
+    })
+    ReleaseDepth = AutoBankV3:CreateSlider({
+        Name = 'Release Depth',
+        Min = 1,
         Max = 10,
-        Default = 2,
+        Default = 4.5,
         Decimal = 10,
         Suffix = function(val)
-            return val == 1 and 'second' or 'seconds'
-        end,
-        Tooltip = 'How often to attempt depositing into your chest'
+            return val == 1 and 'stud' or 'studs'
+        end
     })
     AutoBankV3:CreateButton({
         Name = 'Debug Dump',
