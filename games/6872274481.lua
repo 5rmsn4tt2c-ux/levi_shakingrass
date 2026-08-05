@@ -15047,7 +15047,6 @@ run(function()
     local GUICheck
 
     local frozen = {}
-    local scattered = {}   -- items that drifted >5 studs after release; re-CFramed to player until picked up
     local stashedCounts = {iron = 0, diamond = 0, emerald = 0}
     local busy = false
     local cachedChest = nil  -- cached chest object (not position — recomputed each call with live Depth)
@@ -15153,33 +15152,6 @@ run(function()
         end
     end
 
-    -- for each scattered item: disable collision (so it doesn't push the player), re-CFrame to
-    -- player position (same as Pickup Range TP), then attempt pickup.
-    -- ClientDropTime=0 means vape's own Pickup Range also works on these items in parallel.
-    local function maintainScattered()
-        if not entitylib.isAlive then return end
-        local pos = entitylib.character.RootPart.Position
-        for i = #scattered, 1, -1 do
-            local item = scattered[i]
-            if not (item and item.Parent) then
-                table.remove(scattered, i)
-            else
-                pcall(function()
-                    if item:IsA('BasePart') then item.CanCollide = false end
-                    for _, part in item:GetDescendants() do
-                        if part:IsA('BasePart') then part.CanCollide = false end
-                    end
-                    item.CFrame = CFrame.new(pos)
-                end)
-                task.spawn(function()
-                    pcall(function()
-                        bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = item})
-                    end)
-                end)
-            end
-        end
-    end
-
     -- forward-declared so stashOne/releaseAll can call them before the UI block assigns the real bodies
     local updateV3UI = function() end
     local setV3Status = function() end
@@ -15198,30 +15170,36 @@ run(function()
                         if not caught then caught = v end
                     end)
 
-                    -- discard return value — it's a client-predicted instance the server
-                    -- never recognises; PickupItem always fails on it.  The real
-                    -- server-replicated ItemDrop arrives via the signal above.
-                    pcall(function()
-                        bedwars.Client:Get(remotes.DropItem):CallServer({
+                    local ok, dropped = pcall(function()
+                        return bedwars.Client:Get(remotes.DropItem):CallServer({
                             item = item.tool,
                             amount = item.amount
                         })
                     end)
 
-                    task.wait()  -- one frame for the real server item to arrive
+                    if not (ok and dropped) then
+                        task.wait()
+                        dropped = caught
+                    end
                     conn:Disconnect()
 
-                    if caught and caught.Parent then
+                    if dropped and dropped.Parent then
                         pcall(function()
-                            caught:SetAttribute('ClientDropTime', tick() + 9999)
-                            disableCollision(caught)
-                            -- CFrame while Anchored=true replicates reliably — no slamDown needed
-                            local pos = getChestStashPos() or stashPos
-                            caught.CFrame = CFrame.new(pos)
-                            freezeParts(caught)
-                            table.insert(frozen, caught)
-                            stashedCounts[itemType] = stashedCounts[itemType] + item.amount
-                            updateV3UI()
+                            dropped:SetAttribute('ClientDropTime', tick() + 9999)
+                            disableCollision(dropped)
+                            slamDown(dropped)
+                        end)
+                        task.spawn(function()
+                            task.wait(0.15)
+                            if dropped and dropped.Parent then
+                                -- recompute in case Depth slider changed while waiting
+                                local pos = getChestStashPos() or stashPos
+                                dropped.CFrame = CFrame.new(pos)
+                                freezeParts(dropped)
+                                table.insert(frozen, dropped)
+                                stashedCounts[itemType] = stashedCounts[itemType] + item.amount
+                                updateV3UI()
+                            end
                         end)
                     end
                     task.wait(0.3)
@@ -15468,39 +15446,13 @@ run(function()
                 repeat
                     if entitylib.isAlive then
                         cleanupFrozen()
-                        maintainScattered()
-                        if #scattered > 0 then
-                            depositInventory()
-                        end
                         local atChest = nearChest() and (not GUICheck.Enabled or bedwars.AppController:isAppOpen('ChestApp'))
                         if atChest then
                             lastChestClose = tick()
                             setV3Status('chest')
-                            -- snapshot items + release position BEFORE frozen is cleared
-                            local releaseCenter = entitylib.character.RootPart.Position
-                            local aboutToRelease = {}
-                            for _, item in frozen do
-                                if item and item.Parent then
-                                    table.insert(aboutToRelease, item)
-                                end
-                            end
                             releaseAll()
                             pickupNearby()
                             depositInventory()
-                            -- after physics settle, detect items that scattered (moved >5 studs)
-                            if #aboutToRelease > 0 then
-                                task.spawn(function()
-                                    task.wait(0.25)
-                                    for _, item in aboutToRelease do
-                                        if item and item.Parent then
-                                            local ok, iPos = pcall(function() return item.Position end)
-                                            if ok and (iPos - releaseCenter).Magnitude > 5 then
-                                                table.insert(scattered, item)
-                                            end
-                                        end
-                                    end
-                                end)
-                            end
                         elseif tick() - lastChestClose < 3 then
                             maintainFrozen()
                         else
@@ -15515,7 +15467,6 @@ run(function()
                     task.wait(0.1)
                 until not AutoBankV3.Enabled
                 busy = false
-                scattered = {}
             end
         end,
         Tooltip = 'Stashes loot underground at your chest — stacked inside each other, released to feet on chest open'
@@ -15534,6 +15485,103 @@ run(function()
         Default = true
     })
 end)
+
+run(function()
+    local AutoBuy
+    local Sword
+    local Armor
+    local Upgrades
+    local TierCheck
+    local BedwarsCheck
+    local GUI
+    local SmartCheck
+    local Custom = {}
+    local CustomPost = {}
+    local UpgradeToggles = {}
+    local Functions, id = {}
+    local Callbacks = {Custom, Functions, CustomPost}
+    local npctick = tick()
+    
+    local swords = {
+        'wood_sword',
+        'stone_sword',
+        'iron_sword',
+        'diamond_sword',
+        'emerald_sword'
+    }
+    
+    local armors = {
+        'none',
+        'leather_chestplate',
+        'iron_chestplate',
+        'diamond_chestplate',
+        'emerald_chestplate'
+    }
+    
+    local axes = {
+        'none',
+        'wood_axe',
+        'stone_axe',
+        'iron_axe',
+        'diamond_axe'
+    }
+    
+    local pickaxes = {
+        'none',
+        'wood_pickaxe',
+        'stone_pickaxe',
+        'iron_pickaxe',
+        'diamond_pickaxe'
+    }
+    
+run(function()
+    local AutoBuy
+    local Sword
+    local Armor
+    local Upgrades
+    local TierCheck
+    local BedwarsCheck
+    local GUI
+    local SmartCheck
+    local Custom = {}
+    local CustomPost = {}
+    local UpgradeToggles = {}
+    local Functions, id = {}
+    local Callbacks = {Custom, Functions, CustomPost}
+    local npctick = tick()
+    
+    local swords = {
+        'wood_sword',
+        'stone_sword',
+        'iron_sword',
+        'diamond_sword',
+        'emerald_sword'
+    }
+    
+    local armors = {
+        'none',
+        'leather_chestplate',
+        'iron_chestplate',
+        'diamond_chestplate',
+        'emerald_chestplate'
+    }
+    
+    local axes = {
+        'none',
+        'wood_axe',
+        'stone_axe',
+        'iron_axe',
+        'diamond_axe'
+    }
+    
+    local pickaxes = {
+        'none',
+        'wood_pickaxe',
+        'stone_pickaxe',
+        'iron_pickaxe',
+        'diamond_pickaxe'
+    }
+    
 
 run(function()
     local AutoBuy
