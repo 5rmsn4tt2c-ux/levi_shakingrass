@@ -15047,6 +15047,7 @@ run(function()
     local GUICheck
 
     local frozen = {}
+    local pendingPickup = {}  -- items released from frozen, following player until picked up
     local stashedCounts = {iron = 0, diamond = 0, emerald = 0}
     local busy = false
     local cachedChest = nil  -- cached chest object (not position — recomputed each call with live Depth)
@@ -15148,6 +15149,23 @@ run(function()
             if item and item.Parent then
                 item.CFrame = CFrame.new(stashPos)
                 freezeParts(item)
+            end
+        end
+    end
+
+    -- re-CFrame every pending item to player position each tick so they
+    -- follow the player even if the chest teleport failed.  ClientDropTime
+    -- stays 0 so pickupNearby (and the vape Pickup Range module) can
+    -- grab them at any time from any location.
+    local function maintainPending()
+        if not entitylib.isAlive then return end
+        local pos = entitylib.character.RootPart.Position
+        for i = #pendingPickup, 1, -1 do
+            local item = pendingPickup[i]
+            if not (item and item.Parent) then
+                table.remove(pendingPickup, i)
+            else
+                pcall(function() item.CFrame = CFrame.new(pos) end)
             end
         end
     end
@@ -15377,29 +15395,30 @@ run(function()
         if released or not entitylib.isAlive then return end
         if #frozen == 0 then return end
         released = true
-        -- teleport all items to player feet while still anchored (stacked, above ground, no void)
-        -- player is standing at their chest when this runs so "feet" = "at chest"
-        local feetPos = entitylib.character.RootPart.CFrame * CFrame.new(0, -3, 0)
-        for _, item in frozen do
-            if item and item.Parent then
-                item.CFrame = feetPos
-            end
-        end
-        -- now unfreeze all at once (items are above ground, physics won't eject into void)
+        local pos = entitylib.character.RootPart.Position
         for i = #frozen, 1, -1 do
             local item = frozen[i]
             if item and item.Parent then
-                if item:IsA('BasePart') then
-                    item.CanCollide = true
-                    item.Anchored = false
-                end
-                for _, part in item:GetDescendants() do
-                    if part:IsA('BasePart') then
-                        part.CanCollide = true
-                        part.Anchored = false
+                -- CFrame to player, unanchor so server accepts PickupItem,
+                -- keep CanCollide=false so overlapping items don't scatter,
+                -- CDT=0 so pickupNearby and the vape Pickup Range module can grab them
+                pcall(function()
+                    item.CFrame = CFrame.new(pos)
+                    if item:IsA('BasePart') then
+                        item.CanCollide = false
+                        item.Anchored = false
                     end
-                end
-                item:SetAttribute('ClientDropTime', 0)
+                    for _, part in item:GetDescendants() do
+                        if part:IsA('BasePart') then
+                            part.CanCollide = false
+                            part.Anchored = false
+                        end
+                    end
+                    item:SetAttribute('ClientDropTime', 0)
+                end)
+                -- move to pendingPickup so maintainPending keeps them
+                -- glued to the player until actually consumed by the server
+                table.insert(pendingPickup, item)
             end
             table.remove(frozen, i)
         end
@@ -15446,6 +15465,12 @@ run(function()
                 repeat
                     if entitylib.isAlive then
                         cleanupFrozen()
+                        -- always re-CFrame pending items to player and drain them
+                        -- even if the chest GUI is closed or player has walked away
+                        maintainPending()
+                        if #pendingPickup > 0 then
+                            pickupNearby()
+                        end
                         local atChest = nearChest() and (not GUICheck.Enabled or bedwars.AppController:isAppOpen('ChestApp'))
                         if atChest then
                             lastChestClose = tick()
@@ -15467,6 +15492,7 @@ run(function()
                     task.wait(0.1)
                 until not AutoBankV3.Enabled
                 busy = false
+                pendingPickup = {}
             end
         end,
         Tooltip = 'Stashes loot underground at your chest — stacked inside each other, released to feet on chest open'
