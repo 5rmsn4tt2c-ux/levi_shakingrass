@@ -135,7 +135,6 @@ end)
 if not suc then
     vape:CreateNotification('Milyonpuffnoodles', 'Game file failed: '..tostring(err), 10, 'warning')
 end
-	loadstring(downloadFile('levi_shakingrass/libraries/premium.lua'), 'premium')()
 	finishLoading()
 else
 	vape.Init = finishLoading
