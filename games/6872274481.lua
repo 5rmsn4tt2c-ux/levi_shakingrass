@@ -15045,45 +15045,13 @@ run(function()
     local AutoBankV3
     local Offset
     local ReleaseDepth
+    local Chests
 
     local frozen = {}
     local stashedCounts = {iron = 0, diamond = 0, emerald = 0}
     local busy = false
-    local chestPos = nil
     local lastChestClose = 0
     local resourceTypes = {'emerald', 'diamond', 'iron'}
-
-    local function getMyChestPos()
-        -- try owner attribute first
-        for _, obj in collectionService:GetTagged('personal-chest') do
-            local owner = obj:GetAttribute('Owner') or obj:GetAttribute('PlayerId') or obj:GetAttribute('UserId')
-            if owner == lplr.UserId or owner == lplr.Name then
-                local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA('BasePart')
-                if not part and obj:IsA('BasePart') then part = obj end
-                if part then return part.Position end
-            end
-        end
-        -- fallback: find chest nearest to our team spawn
-        local team = lplr:GetAttribute('Team') or 1
-        local spawnCF = workspace.MapCFrames and workspace.MapCFrames:FindFirstChild(team .. '_spawn')
-        if spawnCF and spawnCF.Value then
-            local spawnPos = spawnCF.Value.Position
-            local best, bestDist
-            for _, obj in collectionService:GetTagged('personal-chest') do
-                local ok, pos = pcall(function() return obj.Position end)
-                if ok and pos then
-                    local d = (spawnPos - pos).Magnitude
-                    if not best or d < bestDist then best = obj; bestDist = d end
-                end
-            end
-            if best then
-                local part = best.PrimaryPart or best:FindFirstChildWhichIsA('BasePart')
-                if not part and best:IsA('BasePart') then part = best end
-                if part then return part.Position end
-            end
-        end
-        return nil
-    end
 
     local function freezeParts(obj)
         if obj:IsA('BasePart') then
@@ -15145,13 +15113,14 @@ run(function()
     end
 
     local function nearChest()
-        if not entitylib.isAlive then return false end
-        local pos = entitylib.character.RootPart.Position
-        for _, obj in collectionService:GetTagged('personal-chest') do
-            local ok, objPos = pcall(function() return obj.Position end)
-            if ok and (objPos - pos).Magnitude < 20 then return true end
+        if entitylib.isAlive then
+            local pos = entitylib.character.RootPart.Position
+            for _, chest in Chests do
+                if (chest.Position - pos).Magnitude < 20 then
+                    return true
+                end
+            end
         end
-        return false
     end
 
     local function cleanupFrozen()
@@ -15164,11 +15133,10 @@ run(function()
 
     local function maintainFrozen()
         if not entitylib.isAlive then return end
-        if not chestPos then chestPos = getMyChestPos() end
-        local anchorTarget = chestPos or entitylib.character.RootPart.Position
+        local pos = entitylib.character.RootPart.Position
         for _, item in frozen do
             if item and item.Parent then
-                item.CFrame = CFrame.new(anchorTarget - Vector3.new(0, Offset.Value, 0))
+                item.CFrame = CFrame.new(pos - Vector3.new(0, Offset.Value, 0))
                 freezeParts(item)
             end
         end
@@ -15209,9 +15177,8 @@ run(function()
                             task.wait(0.15)
                             if dropped and dropped.Parent then
                                 if entitylib.isAlive then
-                                    if not chestPos then chestPos = getMyChestPos() end
-                                    local anchorTarget = chestPos or entitylib.character.RootPart.Position
-                                    dropped.CFrame = CFrame.new(anchorTarget - Vector3.new(0, Offset.Value, 0))
+                                    local pos = entitylib.character.RootPart.Position
+                                    dropped.CFrame = CFrame.new(pos - Vector3.new(0, Offset.Value, 0))
                                 end
                                 freezeParts(dropped)
                                 table.insert(frozen, dropped)
@@ -15283,9 +15250,9 @@ run(function()
         Name = 'AutoBank v3',
         Function = function(callback)
             if callback then
-                chestPos = nil
                 stashedCounts = {iron = 0, diamond = 0, emerald = 0}
                 lastChestClose = 0
+                Chests = collection('personal-chest', AutoBankV3)
                 repeat
                     if entitylib.isAlive then
                         cleanupFrozen()
@@ -15306,7 +15273,7 @@ run(function()
                 busy = false
             end
         end,
-        Tooltip = 'Phases loot underground at your chest — items wait at base and deposit on return'
+        Tooltip = 'Phases loot underground — stacks items on release so one pickup grabs all'
     })
     Offset = AutoBankV3:CreateSlider({
         Name = 'Depth',
@@ -15326,100 +15293,6 @@ run(function()
         Suffix = function(val)
             return val == 1 and 'stud' or 'studs'
         end
-    })
-    AutoBankV3:CreateButton({
-        Name = 'Debug Dump',
-        Function = function()
-            local lines = {}
-            local function d(s) table.insert(lines, s) end
-
-            -- chest data folder
-            local chestData = replicatedStorage.Inventories:FindFirstChild(lplr.Name .. '_personal')
-            d('chestData=' .. tostring(chestData and chestData.Name or 'NIL'))
-
-            -- physical chest
-            local tagged = collectionService:GetTagged('personal-chest')
-            d('tagged#=' .. #tagged)
-            local physChest = findPhysicalChest()
-            if physChest then
-                local plrPos = entitylib.character and entitylib.character.RootPart and entitylib.character.RootPart.Position
-                local dist = plrPos and math.floor((plrPos - physChest.Position).Magnitude) or '?'
-                d('physChest=' .. physChest.Name .. ' dist=' .. dist)
-                d('owner attr=' .. tostring(physChest:GetAttribute('Owner') or physChest:GetAttribute('PlayerId') or physChest:GetAttribute('UserId') or 'none'))
-            else
-                d('physChest=NIL')
-            end
-
-            -- raw remote info
-            local invNS = bedwars.Client:GetNamespace('Inventory')
-            local giveWrapper = invNS:Get('ChestGiveItem')
-            local rawRemote = giveWrapper and giveWrapper.instance
-            d('remote=' .. tostring(rawRemote and (rawRemote.ClassName .. '/' .. rawRemote.Name) or 'NIL'))
-
-            -- first matching item
-            local inv = store.inventory and store.inventory.inventory
-            local items = inv and inv.items
-            local firstItem
-            if items then
-                for _, v in items do
-                    if v.itemType == 'iron' or v.itemType == 'gold' or v.itemType == 'diamond' or v.itemType == 'emerald' then
-                        firstItem = v
-                        break
-                    end
-                end
-            end
-            if firstItem then
-                d('item=' .. firstItem.itemType .. ' tool=' .. tostring(firstItem.tool and firstItem.tool.ClassName or 'NIL'))
-            else
-                d('item=NONE in inventory')
-            end
-
-            -- tool validity
-            if firstItem then
-                local t = firstItem.tool
-                d('tool.Parent=' .. tostring(t and t.Parent and t.Parent.Name or 'NIL'))
-                d('tool.inGame=' .. tostring(t and t:IsDescendantOf(game) or false))
-            end
-
-            -- test 1: rawRemote with physChest
-            if rawRemote and physChest and firstItem then
-                pcall(function() invNS:Get('SetObservedChest'):SendToServer(physChest) end)
-                task.wait(0.1)
-                local ok, res = pcall(function()
-                    if rawRemote.ClassName == 'RemoteFunction' then
-                        return rawRemote:InvokeServer(physChest, firstItem.tool)
-                    end
-                end)
-                pcall(function() invNS:Get('SetObservedChest'):SendToServer(nil) end)
-                d('rawInvoke(physChest): ok=' .. tostring(ok) .. ' res=' .. tostring(res))
-            end
-
-            -- test 2: rawRemote with chestData folder
-            if rawRemote and chestData and firstItem then
-                pcall(function() invNS:Get('SetObservedChest'):SendToServer(chestData) end)
-                task.wait(0.1)
-                local ok2, res2 = pcall(function()
-                    if rawRemote.ClassName == 'RemoteFunction' then
-                        return rawRemote:InvokeServer(chestData, firstItem.tool)
-                    end
-                end)
-                pcall(function() invNS:Get('SetObservedChest'):SendToServer(nil) end)
-                d('rawInvoke(folder): ok=' .. tostring(ok2) .. ' res=' .. tostring(res2))
-            end
-
-            -- test 3: wrapper CallServer with chestData (goes through client wrapper)
-            if giveWrapper and chestData and firstItem then
-                local ok3, res3 = pcall(function()
-                    return giveWrapper:CallServer(chestData, firstItem.tool)
-                end)
-                d('wrapper(folder): ok=' .. tostring(ok3) .. ' res=' .. tostring(res3))
-            end
-
-            local out = table.concat(lines, ' | ')
-            if setclipboard then setclipboard(out) end
-            notif('V3 Debug', out, 15, 'info')
-        end,
-        Tooltip = 'Dumps chest/remote debug info and copies to clipboard'
     })
 end)
 
