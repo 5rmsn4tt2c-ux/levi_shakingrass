@@ -15044,14 +15044,49 @@ end)
 run(function()
     local AutoBankV3
     local Offset
-    local ReleaseDepth
-    local Chests
 
     local frozen = {}
     local stashedCounts = {iron = 0, diamond = 0, emerald = 0}
     local busy = false
+    local chestSafePos = nil
     local lastChestClose = 0
     local resourceTypes = {'emerald', 'diamond', 'iron'}
+
+    local function getMyChestSafePos()
+        -- try owner attribute first
+        local bestObj = nil
+        for _, obj in collectionService:GetTagged('personal-chest') do
+            local owner = obj:GetAttribute('Owner') or obj:GetAttribute('PlayerId') or obj:GetAttribute('UserId')
+            if owner == lplr.UserId or owner == lplr.Name then
+                bestObj = obj
+                break
+            end
+        end
+        -- fallback: nearest chest to player
+        if not bestObj and entitylib.isAlive then
+            local pos = entitylib.character.RootPart.Position
+            local bestDist
+            for _, obj in collectionService:GetTagged('personal-chest') do
+                local ok, objPos = pcall(function() return obj.Position end)
+                if ok then
+                    local d = (pos - objPos).Magnitude
+                    if not bestDist or d < bestDist then bestDist = d; bestObj = obj end
+                end
+            end
+        end
+        if not bestObj then return nil end
+        local ok, cPos = pcall(function() return bestObj.Position end)
+        if not ok or not cPos then return nil end
+        -- raycast upward from below chest to find island bottom surface
+        v3RayParams.FilterDescendantsInstances = {lplr.Character}
+        local ray = workspace:Raycast(cPos - Vector3.new(0, 200, 0), Vector3.new(0, 250, 0), v3RayParams)
+        if ray then
+            -- 5 studs above island bottom = safely inside island geometry
+            return ray.Position + Vector3.new(0, 5, 0)
+        end
+        -- fallback: Offset studs below chest surface
+        return cPos - Vector3.new(0, Offset.Value, 0)
+    end
 
     local function freezeParts(obj)
         if obj:IsA('BasePart') then
@@ -15101,26 +15136,14 @@ run(function()
     local v3RayParams = RaycastParams.new()
     v3RayParams.FilterType = Enum.RaycastFilterType.Exclude
 
-    local function getUnderBlock()
-        if not entitylib.isAlive then return nil end
-        local root = entitylib.character.RootPart
-        v3RayParams.FilterDescendantsInstances = {lplr.Character}
-        local ray = workspace:Raycast(root.Position, Vector3.new(0, -50, 0), v3RayParams)
-        if ray then
-            return ray.Position - Vector3.new(0, ReleaseDepth.Value, 0)
-        end
-        return root.Position - Vector3.new(0, 10, 0)
-    end
-
     local function nearChest()
-        if entitylib.isAlive then
-            local pos = entitylib.character.RootPart.Position
-            for _, chest in Chests do
-                if (chest.Position - pos).Magnitude < 20 then
-                    return true
-                end
-            end
+        if not entitylib.isAlive then return false end
+        local pos = entitylib.character.RootPart.Position
+        for _, obj in collectionService:GetTagged('personal-chest') do
+            local ok, objPos = pcall(function() return obj.Position end)
+            if ok and (objPos - pos).Magnitude < 20 then return true end
         end
+        return false
     end
 
     local function cleanupFrozen()
@@ -15133,10 +15156,11 @@ run(function()
 
     local function maintainFrozen()
         if not entitylib.isAlive then return end
-        local pos = entitylib.character.RootPart.Position
+        if not chestSafePos then chestSafePos = getMyChestSafePos() end
+        if not chestSafePos then return end
         for _, item in frozen do
             if item and item.Parent then
-                item.CFrame = CFrame.new(pos - Vector3.new(0, Offset.Value, 0))
+                item.CFrame = CFrame.new(chestSafePos)
                 freezeParts(item)
             end
         end
@@ -15144,6 +15168,8 @@ run(function()
 
     local function stashOne()
         if busy or not entitylib.isAlive then return end
+        if not chestSafePos then chestSafePos = getMyChestSafePos() end
+        if not chestSafePos then return end
         for _, itemType in resourceTypes do
             local item = getItem(itemType)
             if item then
@@ -15176,10 +15202,7 @@ run(function()
                         task.spawn(function()
                             task.wait(0.15)
                             if dropped and dropped.Parent then
-                                if entitylib.isAlive then
-                                    local pos = entitylib.character.RootPart.Position
-                                    dropped.CFrame = CFrame.new(pos - Vector3.new(0, Offset.Value, 0))
-                                end
+                                dropped.CFrame = CFrame.new(chestSafePos)
                                 freezeParts(dropped)
                                 table.insert(frozen, dropped)
                                 stashedCounts[itemType] = stashedCounts[itemType] + item.amount
@@ -15200,14 +15223,15 @@ run(function()
         if released or not entitylib.isAlive then return end
         if #frozen == 0 then return end
         released = true
-        local hidePos = getUnderBlock()
+        -- release at player feet — above ground so physics doesn't eject into void
+        local releasePos = entitylib.character.RootPart.CFrame * CFrame.new(0, -3, 0)
         -- pass 1: stack all items at the same spot while still anchored
         for _, item in frozen do
             if item and item.Parent then
-                item.CFrame = CFrame.new(hidePos)
+                item.CFrame = releasePos
             end
         end
-        -- pass 2: unfreeze all (physics kicks in after they are already stacked)
+        -- pass 2: unfreeze all (items are above ground, no geometry ejection)
         for i = #frozen, 1, -1 do
             local item = frozen[i]
             if item and item.Parent then
@@ -15250,9 +15274,9 @@ run(function()
         Name = 'AutoBank v3',
         Function = function(callback)
             if callback then
+                chestSafePos = nil
                 stashedCounts = {iron = 0, diamond = 0, emerald = 0}
                 lastChestClose = 0
-                Chests = collection('personal-chest', AutoBankV3)
                 repeat
                     if entitylib.isAlive then
                         cleanupFrozen()
@@ -15280,16 +15304,6 @@ run(function()
         Min = 50,
         Max = 500,
         Default = 300,
-        Suffix = function(val)
-            return val == 1 and 'stud' or 'studs'
-        end
-    })
-    ReleaseDepth = AutoBankV3:CreateSlider({
-        Name = 'Release Depth',
-        Min = 1,
-        Max = 10,
-        Default = 4.5,
-        Decimal = 10,
         Suffix = function(val)
             return val == 1 and 'stud' or 'studs'
         end
