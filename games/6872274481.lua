@@ -15198,36 +15198,30 @@ run(function()
                         if not caught then caught = v end
                     end)
 
-                    local ok, dropped = pcall(function()
-                        return bedwars.Client:Get(remotes.DropItem):CallServer({
+                    -- discard return value — it's a client-predicted instance the server
+                    -- never recognises; PickupItem always fails on it.  The real
+                    -- server-replicated ItemDrop arrives via the signal above.
+                    pcall(function()
+                        bedwars.Client:Get(remotes.DropItem):CallServer({
                             item = item.tool,
                             amount = item.amount
                         })
                     end)
 
-                    if not (ok and dropped) then
-                        task.wait()
-                        dropped = caught
-                    end
+                    task.wait()  -- one frame for the real server item to arrive
                     conn:Disconnect()
 
-                    if dropped and dropped.Parent then
+                    if caught and caught.Parent then
                         pcall(function()
-                            dropped:SetAttribute('ClientDropTime', tick() + 9999)
-                            disableCollision(dropped)
-                            slamDown(dropped)
-                        end)
-                        task.spawn(function()
-                            task.wait(0.15)
-                            if dropped and dropped.Parent then
-                                -- recompute in case Depth slider changed while waiting
-                                local pos = getChestStashPos() or stashPos
-                                dropped.CFrame = CFrame.new(pos)
-                                freezeParts(dropped)
-                                table.insert(frozen, dropped)
-                                stashedCounts[itemType] = stashedCounts[itemType] + item.amount
-                                updateV3UI()
-                            end
+                            caught:SetAttribute('ClientDropTime', tick() + 9999)
+                            disableCollision(caught)
+                            -- CFrame while Anchored=true replicates reliably — no slamDown needed
+                            local pos = getChestStashPos() or stashPos
+                            caught.CFrame = CFrame.new(pos)
+                            freezeParts(caught)
+                            table.insert(frozen, caught)
+                            stashedCounts[itemType] = stashedCounts[itemType] + item.amount
+                            updateV3UI()
                         end)
                     end
                     task.wait(0.3)
