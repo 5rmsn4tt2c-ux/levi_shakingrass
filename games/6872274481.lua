@@ -15153,7 +15153,8 @@ run(function()
         end
     end
 
-    -- for each scattered item: re-CFrame to player (same as Pickup Range TP), then attempt pickup.
+    -- for each scattered item: disable collision (so it doesn't push the player), re-CFrame to
+    -- player position (same as Pickup Range TP), then attempt pickup.
     -- ClientDropTime=0 means vape's own Pickup Range also works on these items in parallel.
     local function maintainScattered()
         if not entitylib.isAlive then return end
@@ -15163,7 +15164,13 @@ run(function()
             if not (item and item.Parent) then
                 table.remove(scattered, i)
             else
-                pcall(function() item.CFrame = CFrame.new(pos) end)
+                pcall(function()
+                    if item:IsA('BasePart') then item.CanCollide = false end
+                    for _, part in item:GetDescendants() do
+                        if part:IsA('BasePart') then part.CanCollide = false end
+                    end
+                    item.CFrame = CFrame.new(pos)
+                end)
                 task.spawn(function()
                     pcall(function()
                         bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = item})
