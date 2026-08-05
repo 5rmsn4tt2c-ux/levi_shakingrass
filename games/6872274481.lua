@@ -15047,10 +15047,9 @@ run(function()
     local GUICheck
 
     local frozen = {}
-    local pendingPickup = {}  -- items released from frozen, anchored at player until picked up
+    local pendingPickup = {}  -- items released from frozen, staggered at player until picked up
     local stashedCounts = {iron = 0, diamond = 0, emerald = 0}
     local busy = false
-    local draining = false  -- prevents drainPending from stacking on itself
     local cachedChest = nil  -- cached chest object (not position — recomputed each call with live Depth)
     local lastChestClose = 0
     local resourceTypes = {'emerald', 'diamond', 'iron'}
@@ -15154,9 +15153,9 @@ run(function()
         end
     end
 
-    -- re-CFrame every pending item to player position each tick.
-    -- Items stay Anchored=true here so they can't scatter or drift —
-    -- drainPending briefly unanchors each one only during the PickupItem call.
+    -- re-CFrame each pending item to a tiny staggered offset above the player.
+    -- Stagger prevents exact overlap so physics won't eject items even if
+    -- CanCollide is true.  All items stay within 1 stud so pickup always works.
     local function maintainPending()
         if not entitylib.isAlive then return end
         local pos = entitylib.character.RootPart.Position
@@ -15165,52 +15164,27 @@ run(function()
             if not (item and item.Parent) then
                 table.remove(pendingPickup, i)
             else
-                pcall(function() item.CFrame = CFrame.new(pos) end)
+                -- stack vertically 0.2 studs apart — 10 items = 2 studs total height
+                local offset = Vector3.new(0, (i - 1) * 0.2, 0)
+                pcall(function() item.CFrame = CFrame.new(pos + offset) end)
             end
         end
     end
 
-    -- picks up pendingPickup items one at a time:
-    --   re-CFrame to player → briefly unanchor → PickupItem → re-anchor if failed
-    -- runs in a task.spawn so it doesn't block the 0.1s main loop tick.
-    local function drainPending()
-        if draining or not entitylib.isAlive or #pendingPickup == 0 then return end
-        draining = true
-        task.spawn(function()
-            for i = #pendingPickup, 1, -1 do
-                local item = pendingPickup[i]
-                if not (item and item.Parent) then
-                    table.remove(pendingPickup, i)
-                    continue
-                end
-                if not entitylib.isAlive then break end
-                pcall(function()
-                    -- snap to player right before unanchoring so it can't drift
-                    local curPos = entitylib.character.RootPart.Position
-                    item.CFrame = CFrame.new(curPos)
-                    if item:IsA('BasePart') then item.Anchored = false end
-                    for _, part in item:GetDescendants() do
-                        if part:IsA('BasePart') then part.Anchored = false end
-                    end
-                end)
-                pcall(function()
-                    bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = item})
-                end)
-                task.wait(0.08)
-                if item and item.Parent then
-                    -- server didn't consume it — re-anchor so it stays put
+    -- fire a PickupItem call for each pending item in its own task.spawn so
+    -- all items are attempted in parallel and the main loop never blocks.
+    -- No distance/CDT check needed — these are our own items, CDT is already 0.
+    local function pickupPending()
+        if not entitylib.isAlive or #pendingPickup == 0 then return end
+        for _, item in pendingPickup do
+            if item and item.Parent then
+                task.spawn(function()
                     pcall(function()
-                        if item:IsA('BasePart') then item.Anchored = true end
-                        for _, part in item:GetDescendants() do
-                            if part:IsA('BasePart') then part.Anchored = true end
-                        end
+                        bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = item})
                     end)
-                else
-                    table.remove(pendingPickup, i)
-                end
+                end)
             end
-            draining = false
-        end)
+        end
     end
 
     -- forward-declared so stashOne/releaseAll can call them before the UI block assigns the real bodies
@@ -15439,31 +15413,31 @@ run(function()
         if #frozen == 0 then return end
         released = true
         local pos = entitylib.character.RootPart.Position
+        local idx = 0
         for i = #frozen, 1, -1 do
             local item = frozen[i]
             if item and item.Parent then
-                -- CFrame to player, unanchor so server accepts PickupItem,
-                -- keep CanCollide=false so overlapping items don't scatter,
-                -- CDT=0 so pickupNearby and the vape Pickup Range module can grab them
+                local offset = Vector3.new(0, idx * 0.2, 0)
                 pcall(function()
-                    item.CFrame = CFrame.new(pos)
-                    -- keep Anchored=true — items are physically frozen at player
-                    -- position.  drainPending will briefly unanchor each one
-                    -- only during its PickupItem call, then re-anchor if rejected.
+                    -- place each item at a slightly different height so they
+                    -- don't share the same physics space — no ejection possible
+                    item.CFrame = CFrame.new(pos + offset)
+                    item.CanCollide = false
+                    item.Anchored = false
                     if item:IsA('BasePart') then
                         item.CanCollide = false
-                        item.Anchored = true
+                        item.Anchored = false
                     end
                     for _, part in item:GetDescendants() do
                         if part:IsA('BasePart') then
                             part.CanCollide = false
-                            part.Anchored = true
+                            part.Anchored = false
                         end
                     end
                     item:SetAttribute('ClientDropTime', 0)
                 end)
-                -- move to pendingPickup — drainPending handles per-item pickup
                 table.insert(pendingPickup, item)
+                idx += 1
             end
             table.remove(frozen, i)
         end
@@ -15510,9 +15484,9 @@ run(function()
                 repeat
                     if entitylib.isAlive then
                         cleanupFrozen()
-                        -- keep pending items anchored at player, drain one at a time
+                        -- re-CFrame pending items to staggered positions, pick up in parallel
                         maintainPending()
-                        drainPending()
+                        pickupPending()
                         local atChest = nearChest() and (not GUICheck.Enabled or bedwars.AppController:isAppOpen('ChestApp'))
                         if atChest then
                             lastChestClose = tick()
@@ -15534,7 +15508,6 @@ run(function()
                     task.wait(0.1)
                 until not AutoBankV3.Enabled
                 busy = false
-                draining = false
                 pendingPickup = {}
             end
         end,
