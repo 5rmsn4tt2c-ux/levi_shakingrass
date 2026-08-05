@@ -15048,27 +15048,25 @@ run(function()
     local frozen = {}
     local stashedCounts = {iron = 0, diamond = 0, emerald = 0}
     local busy = false
-    local chestSafePos = nil
+    local cachedChest = nil  -- cached chest object (not position — recomputed each call with live Depth)
     local lastChestClose = 0
     local resourceTypes = {'emerald', 'diamond', 'iron'}
 
-    local v3RayParams = RaycastParams.new()
-    v3RayParams.FilterType = Enum.RaycastFilterType.Exclude
-
-    local function getMyChestSafePos()
-        -- try owner attribute first
-        local bestObj = nil
+    -- returns the chest BasePart/Model, caches it so we don't scan every tick
+    local function getChestObj()
+        if cachedChest and cachedChest.Parent then return cachedChest end
+        cachedChest = nil
+        -- prefer the chest that has an owner attribute matching us
         for _, obj in collectionService:GetTagged('personal-chest') do
             local owner = obj:GetAttribute('Owner') or obj:GetAttribute('PlayerId') or obj:GetAttribute('UserId')
             if owner == lplr.UserId or owner == lplr.Name then
-                bestObj = obj
-                break
+                cachedChest = obj; return obj
             end
         end
-        -- fallback: nearest chest to player
-        if not bestObj and entitylib.isAlive then
+        -- fallback: nearest tagged chest to the player
+        if entitylib.isAlive then
             local pos = entitylib.character.RootPart.Position
-            local bestDist
+            local bestDist, bestObj
             for _, obj in collectionService:GetTagged('personal-chest') do
                 local ok, objPos = pcall(function() return obj.Position end)
                 if ok then
@@ -15076,18 +15074,18 @@ run(function()
                     if not bestDist or d < bestDist then bestDist = d; bestObj = obj end
                 end
             end
+            if bestObj then cachedChest = bestObj; return bestObj end
         end
-        if not bestObj then return nil end
-        local ok, cPos = pcall(function() return bestObj.Position end)
+        return nil
+    end
+
+    -- returns the stash position: Depth studs straight below the chest
+    -- called fresh each time so the Depth slider is always respected
+    local function getChestStashPos()
+        local obj = getChestObj()
+        if not obj then return nil end
+        local ok, cPos = pcall(function() return obj.Position end)
         if not ok or not cPos then return nil end
-        -- raycast upward from below chest to find island bottom surface
-        v3RayParams.FilterDescendantsInstances = {lplr.Character}
-        local ray = workspace:Raycast(cPos - Vector3.new(0, 200, 0), Vector3.new(0, 250, 0), v3RayParams)
-        if ray then
-            -- 5 studs above island bottom = safely inside island geometry
-            return ray.Position + Vector3.new(0, 5, 0)
-        end
-        -- fallback: Offset studs below chest surface
         return cPos - Vector3.new(0, Offset.Value, 0)
     end
 
@@ -15104,19 +15102,6 @@ run(function()
                 part.RotVelocity = Vector3.zero
                 part.CanCollide = false
                 part.Anchored = true
-            end
-        end
-    end
-
-    local function unfreezeParts(obj)
-        if obj:IsA('BasePart') then
-            obj.CanCollide = true
-            obj.Anchored = false
-        end
-        for _, part in obj:GetDescendants() do
-            if part:IsA('BasePart') then
-                part.CanCollide = true
-                part.Anchored = false
             end
         end
     end
@@ -15156,11 +15141,11 @@ run(function()
 
     local function maintainFrozen()
         if not entitylib.isAlive then return end
-        if not chestSafePos then chestSafePos = getMyChestSafePos() end
-        if not chestSafePos then return end
+        local stashPos = getChestStashPos()
+        if not stashPos then return end
         for _, item in frozen do
             if item and item.Parent then
-                item.CFrame = CFrame.new(chestSafePos)
+                item.CFrame = CFrame.new(stashPos)
                 freezeParts(item)
             end
         end
@@ -15168,8 +15153,8 @@ run(function()
 
     local function stashOne()
         if busy or not entitylib.isAlive then return end
-        if not chestSafePos then chestSafePos = getMyChestSafePos() end
-        if not chestSafePos then return end
+        local stashPos = getChestStashPos()
+        if not stashPos then return end
         for _, itemType in resourceTypes do
             local item = getItem(itemType)
             if item then
@@ -15202,7 +15187,9 @@ run(function()
                         task.spawn(function()
                             task.wait(0.15)
                             if dropped and dropped.Parent then
-                                dropped.CFrame = CFrame.new(chestSafePos)
+                                -- recompute in case Depth slider changed while waiting
+                                local pos = getChestStashPos() or stashPos
+                                dropped.CFrame = CFrame.new(pos)
                                 freezeParts(dropped)
                                 table.insert(frozen, dropped)
                                 stashedCounts[itemType] = stashedCounts[itemType] + item.amount
@@ -15223,19 +15210,15 @@ run(function()
         if released or not entitylib.isAlive then return end
         if #frozen == 0 then return end
         released = true
-        -- release at player feet — above ground so physics doesn't eject into void
-        local releasePos = entitylib.character.RootPart.CFrame * CFrame.new(0, -3, 0)
-        -- pass 1: stack all items at the same spot while still anchored
-        for _, item in frozen do
-            if item and item.Parent then
-                item.CFrame = releasePos
-            end
-        end
-        -- pass 2: unfreeze all (items are above ground, no geometry ejection)
+        -- items are already stacked at the chest underground — unfreeze in place
+        -- keep CanCollide=false so geometry can't eject them before pickup fires
         for i = #frozen, 1, -1 do
             local item = frozen[i]
             if item and item.Parent then
-                unfreezeParts(item)
+                if item:IsA('BasePart') then item.Anchored = false end
+                for _, part in item:GetDescendants() do
+                    if part:IsA('BasePart') then part.Anchored = false end
+                end
                 item:SetAttribute('ClientDropTime', 0)
             end
             table.remove(frozen, i)
@@ -15247,9 +15230,11 @@ run(function()
     local function pickupNearby()
         if not entitylib.isAlive then return end
         local pos = entitylib.character.RootPart.Position
+        -- range covers Depth studs underground + buffer so items are always reachable
+        local range = Offset.Value + 15
         for _, v in collectionService:GetTagged('ItemDrop') do
             if v and v.Parent and tick() - (v:GetAttribute('ClientDropTime') or 0) >= 2 then
-                if (pos - v.Position).Magnitude <= 20 then
+                if (pos - v.Position).Magnitude <= range then
                     pcall(function()
                         bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = v})
                     end)
@@ -15274,7 +15259,7 @@ run(function()
         Name = 'AutoBank v3',
         Function = function(callback)
             if callback then
-                chestSafePos = nil
+                cachedChest = nil
                 stashedCounts = {iron = 0, diamond = 0, emerald = 0}
                 lastChestClose = 0
                 repeat
@@ -15297,13 +15282,13 @@ run(function()
                 busy = false
             end
         end,
-        Tooltip = 'Phases loot underground — stacks items on release so one pickup grabs all'
+        Tooltip = 'Stashes loot underground at your chest — stacked inside each other, auto-pickup when you return'
     })
     Offset = AutoBankV3:CreateSlider({
         Name = 'Depth',
-        Min = 50,
-        Max = 500,
-        Default = 300,
+        Min = 1,
+        Max = 30,
+        Default = 8,
         Suffix = function(val)
             return val == 1 and 'stud' or 'studs'
         end
