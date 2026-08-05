@@ -15211,12 +15211,16 @@ run(function()
         if released or not entitylib.isAlive then return end
         if #frozen == 0 then return end
         released = true
-        -- just mark items as pickup-eligible; keep them anchored underground (no teleport, no void)
-        -- pickupNearby uses extended range to reach them through the chest floor
+        -- mark items pickup-eligible and unanchor them so the server's physics check passes
+        -- CanCollide stays false → items fall very slowly (not a void risk within a few ticks)
         for i = #frozen, 1, -1 do
             local item = frozen[i]
             if item and item.Parent then
                 item:SetAttribute('ClientDropTime', 0)
+                if item:IsA('BasePart') then item.Anchored = false end
+                for _, part in item:GetDescendants() do
+                    if part:IsA('BasePart') then part.Anchored = false end
+                end
             end
             table.remove(frozen, i)
         end
@@ -15227,13 +15231,29 @@ run(function()
     local function pickupNearby()
         if not entitylib.isAlive then return end
         local pos = entitylib.character.RootPart.Position
-        -- range extended to cover items anchored underground (Depth studs + player height)
         local range = Offset.Value + 12
         for _, v in collectionService:GetTagged('ItemDrop') do
             if v and v.Parent and tick() - (v:GetAttribute('ClientDropTime') or 0) >= 2 then
                 if (pos - v.Position).Magnitude <= range then
-                    pcall(function()
-                        bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = v})
+                    local vRef = v
+                    task.spawn(function()
+                        -- ensure unanchored before remote fires (server physics check)
+                        if vRef.Parent then
+                            if vRef:IsA('BasePart') then vRef.Anchored = false end
+                            for _, part in vRef:GetDescendants() do
+                                if part:IsA('BasePart') then part.Anchored = false end
+                            end
+                        end
+                        pcall(function()
+                            bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = vRef})
+                        end)
+                        -- re-anchor survivor so it can't drift into the void
+                        if vRef.Parent then
+                            if vRef:IsA('BasePart') then vRef.Anchored = true end
+                            for _, part in vRef:GetDescendants() do
+                                if part:IsA('BasePart') then part.Anchored = true end
+                            end
+                        end
                     end)
                 end
             end
