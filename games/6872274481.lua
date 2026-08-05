@@ -15232,18 +15232,21 @@ run(function()
                         if not caught then caught = v end
                     end)
 
-                    local ok, dropped = pcall(function()
-                        return bedwars.Client:Get(remotes.DropItem):CallServer({
+                    -- trigger the drop — discard the return value; it's a
+                    -- client-predicted instance the server never sees, so
+                    -- PickupItem always fails on it and other players can't
+                    -- see it move.  The real server-replicated ItemDrop
+                    -- arrives via the signal above.
+                    pcall(function()
+                        bedwars.Client:Get(remotes.DropItem):CallServer({
                             item = item.tool,
                             amount = item.amount
                         })
                     end)
 
-                    if not (ok and dropped) then
-                        task.wait()
-                        dropped = caught
-                    end
+                    task.wait()       -- one frame for the real item to arrive
                     conn:Disconnect()
+                    local dropped = caught   -- always the real server item
 
                     if dropped and dropped.Parent then
                         pcall(function()
