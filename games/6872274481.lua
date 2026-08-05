@@ -15047,7 +15047,6 @@ run(function()
     local GUICheck
 
     local frozen = {}
-    local pendingPickup = {}
     local stashedCounts = {iron = 0, diamond = 0, emerald = 0}
     local busy = false
     local cachedChest = nil  -- cached chest object (not position — recomputed each call with live Depth)
@@ -15153,19 +15152,6 @@ run(function()
         end
     end
 
-    local function maintainPending()
-        if not entitylib.isAlive then return end
-        local pos = entitylib.character.RootPart.Position
-        for i = #pendingPickup, 1, -1 do
-            local item = pendingPickup[i]
-            if not (item and item.Parent) then
-                table.remove(pendingPickup, i)
-            else
-                pcall(function() item.CFrame = CFrame.new(pos) end)
-            end
-        end
-    end
-
     -- forward-declared so stashOne/releaseAll can call them before the UI block assigns the real bodies
     local updateV3UI = function() end
     local setV3Status = function() end
@@ -15184,21 +15170,18 @@ run(function()
                         if not caught then caught = v end
                     end)
 
-                    -- trigger the drop — discard the return value; it's a
-                    -- client-predicted instance the server never sees, so
-                    -- PickupItem always fails on it and other players can't
-                    -- see it move.  The real server-replicated ItemDrop
-                    -- arrives via the signal above.
-                    pcall(function()
-                        bedwars.Client:Get(remotes.DropItem):CallServer({
+                    local ok, dropped = pcall(function()
+                        return bedwars.Client:Get(remotes.DropItem):CallServer({
                             item = item.tool,
                             amount = item.amount
                         })
                     end)
 
-                    task.wait()       -- one frame for the real item to arrive
+                    if not (ok and dropped) then
+                        task.wait()
+                        dropped = caught
+                    end
                     conn:Disconnect()
-                    local dropped = caught   -- always the real server item
 
                     if dropped and dropped.Parent then
                         pcall(function()
@@ -15394,25 +15377,29 @@ run(function()
         if released or not entitylib.isAlive then return end
         if #frozen == 0 then return end
         released = true
-        local pos = entitylib.character.RootPart.Position
+        -- teleport all items to player feet while still anchored (stacked, above ground, no void)
+        -- player is standing at their chest when this runs so "feet" = "at chest"
+        local feetPos = entitylib.character.RootPart.CFrame * CFrame.new(0, -3, 0)
+        for _, item in frozen do
+            if item and item.Parent then
+                item.CFrame = feetPos
+            end
+        end
+        -- now unfreeze all at once (items are above ground, physics won't eject into void)
         for i = #frozen, 1, -1 do
             local item = frozen[i]
             if item and item.Parent then
-                pcall(function()
-                    item.CFrame = CFrame.new(pos)
-                    if item:IsA('BasePart') then
-                        item.CanCollide = false
-                        item.Anchored = false
+                if item:IsA('BasePart') then
+                    item.CanCollide = true
+                    item.Anchored = false
+                end
+                for _, part in item:GetDescendants() do
+                    if part:IsA('BasePart') then
+                        part.CanCollide = true
+                        part.Anchored = false
                     end
-                    for _, part in item:GetDescendants() do
-                        if part:IsA('BasePart') then
-                            part.CanCollide = false
-                            part.Anchored = false
-                        end
-                    end
-                    item:SetAttribute('ClientDropTime', 0)
-                end)
-                table.insert(pendingPickup, item)
+                end
+                item:SetAttribute('ClientDropTime', 0)
             end
             table.remove(frozen, i)
         end
@@ -15459,10 +15446,6 @@ run(function()
                 repeat
                     if entitylib.isAlive then
                         cleanupFrozen()
-                        maintainPending()
-                        if #pendingPickup > 0 then
-                            pickupNearby()
-                        end
                         local atChest = nearChest() and (not GUICheck.Enabled or bedwars.AppController:isAppOpen('ChestApp'))
                         if atChest then
                             lastChestClose = tick()
@@ -15484,7 +15467,6 @@ run(function()
                     task.wait(0.1)
                 until not AutoBankV3.Enabled
                 busy = false
-                pendingPickup = {}
             end
         end,
         Tooltip = 'Stashes loot underground at your chest — stacked inside each other, released to feet on chest open'
