@@ -15052,6 +15052,9 @@ run(function()
     local lastChestClose = 0
     local resourceTypes = {'emerald', 'diamond', 'iron'}
 
+    local v3RayParams = RaycastParams.new()
+    v3RayParams.FilterType = Enum.RaycastFilterType.Exclude
+
     local function getMyChestSafePos()
         -- try owner attribute first
         local bestObj = nil
@@ -15132,9 +15135,6 @@ run(function()
             if part:IsA('BasePart') then part.Velocity = v end
         end
     end
-
-    local v3RayParams = RaycastParams.new()
-    v3RayParams.FilterType = Enum.RaycastFilterType.Exclude
 
     local function nearChest()
         if not entitylib.isAlive then return false end
