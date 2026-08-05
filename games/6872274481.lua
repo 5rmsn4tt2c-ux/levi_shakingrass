@@ -15044,6 +15044,7 @@ end)
 run(function()
     local AutoBankV3
     local Offset
+    local GUICheck
 
     local frozen = {}
     local stashedCounts = {iron = 0, diamond = 0, emerald = 0}
@@ -15210,14 +15211,27 @@ run(function()
         if released or not entitylib.isAlive then return end
         if #frozen == 0 then return end
         released = true
-        -- items are already stacked at the chest underground — unfreeze in place
-        -- keep CanCollide=false so geometry can't eject them before pickup fires
+        -- teleport all items to player feet while still anchored (stacked, above ground, no void)
+        -- player is standing at their chest when this runs so "feet" = "at chest"
+        local feetPos = entitylib.character.RootPart.CFrame * CFrame.new(0, -3, 0)
+        for _, item in frozen do
+            if item and item.Parent then
+                item.CFrame = feetPos
+            end
+        end
+        -- now unfreeze all at once (items are above ground, physics won't eject into void)
         for i = #frozen, 1, -1 do
             local item = frozen[i]
             if item and item.Parent then
-                if item:IsA('BasePart') then item.Anchored = false end
+                if item:IsA('BasePart') then
+                    item.CanCollide = true
+                    item.Anchored = false
+                end
                 for _, part in item:GetDescendants() do
-                    if part:IsA('BasePart') then part.Anchored = false end
+                    if part:IsA('BasePart') then
+                        part.CanCollide = true
+                        part.Anchored = false
+                    end
                 end
                 item:SetAttribute('ClientDropTime', 0)
             end
@@ -15230,11 +15244,9 @@ run(function()
     local function pickupNearby()
         if not entitylib.isAlive then return end
         local pos = entitylib.character.RootPart.Position
-        -- range covers Depth studs underground + buffer so items are always reachable
-        local range = Offset.Value + 15
         for _, v in collectionService:GetTagged('ItemDrop') do
             if v and v.Parent and tick() - (v:GetAttribute('ClientDropTime') or 0) >= 2 then
-                if (pos - v.Position).Magnitude <= range then
+                if (pos - v.Position).Magnitude <= 20 then
                     pcall(function()
                         bedwars.Client:Get(remotes.PickupItem):CallServerAsync({itemDrop = v})
                     end)
@@ -15265,7 +15277,8 @@ run(function()
                 repeat
                     if entitylib.isAlive then
                         cleanupFrozen()
-                        if nearChest() then
+                        local atChest = nearChest() and (not GUICheck.Enabled or bedwars.AppController:isAppOpen('ChestApp'))
+                        if atChest then
                             lastChestClose = tick()
                             releaseAll()
                             pickupNearby()
@@ -15282,7 +15295,7 @@ run(function()
                 busy = false
             end
         end,
-        Tooltip = 'Stashes loot underground at your chest — stacked inside each other, auto-pickup when you return'
+        Tooltip = 'Stashes loot underground at your chest — stacked inside each other, released to feet on chest open'
     })
     Offset = AutoBankV3:CreateSlider({
         Name = 'Depth',
@@ -15292,6 +15305,10 @@ run(function()
         Suffix = function(val)
             return val == 1 and 'stud' or 'studs'
         end
+    })
+    GUICheck = AutoBankV3:CreateToggle({
+        Name = 'GUI Check',
+        Default = true
     })
 end)
 
