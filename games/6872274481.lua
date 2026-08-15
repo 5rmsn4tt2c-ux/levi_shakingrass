@@ -1079,7 +1079,8 @@ run(function()
 	end
 
 	for i, v in remoteNames do
-		local remote = dumpRemote(debug.getconstants(v))
+		local _ok, _constants = pcall(debug.getconstants, v)
+		local remote = dumpRemote(_ok and _constants or nil)
 		if remote == '' and packages.remotes[i] then
 			remote = packages.remotes[i]
 		end
