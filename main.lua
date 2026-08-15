@@ -32,6 +32,23 @@ if not isfile('levi_shakingrass/profiles/commit.txt') then
 	writefile('levi_shakingrass/profiles/commit.txt', 'main')
 end
 
+-- debug logger
+local function dbg(msg)
+	pcall(function()
+		local t = tostring(math.floor(os.clock() * 1000))
+		local line = '[' .. t .. 'ms] ' .. msg .. '\n'
+		local existing = ''
+		if isfile('levi_shakingrass/debug.txt') then
+			existing = readfile('levi_shakingrass/debug.txt')
+		end
+		writefile('levi_shakingrass/debug.txt', existing .. line)
+	end)
+end
+
+-- wipe old debug log on each fresh load
+pcall(function() writefile('levi_shakingrass/debug.txt', '') end)
+dbg('START main.lua — PlaceId=' .. tostring(game.PlaceId))
+
 local function downloadFile(path, func)
 	local filePath = select(1, path:gsub('levi_shakingrass/', ''))
 	local function fetchFile(ref)
@@ -124,18 +141,30 @@ local gui = 'new'
 if not isfolder('levi_shakingrass/assets/'..gui) then
 	makefolder('levi_shakingrass/assets/'..gui)
 end
+
+dbg('loading GUI: guis/' .. gui .. '.lua')
 vape = loadstring(downloadFile('levi_shakingrass/guis/'..gui..'.lua'), 'gui')()
 shared.vape = vape
+dbg('GUI loaded OK')
 
 if not shared.VapeIndependent then
+	dbg('loading universal.lua')
 	loadstring(downloadFile('levi_shakingrass/games/universal.lua'), 'universal')()
+	dbg('universal.lua loaded OK')
+
+	dbg('loading game file: games/' .. tostring(game.PlaceId) .. '.lua')
 	local suc, err = pcall(function()
-    loadstring(downloadFile('levi_shakingrass/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))()
-end)
-if not suc then
-    vape:CreateNotification('Milyonpuffnoodles', 'Game file failed: '..tostring(err), 10, 'warning')
-end
+		loadstring(downloadFile('levi_shakingrass/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))()
+	end)
+	if not suc then
+		dbg('GAME FILE FAILED: ' .. tostring(err))
+		vape:CreateNotification('Milyonpuffnoodles', 'Game file failed: '..tostring(err), 10, 'warning')
+	else
+		dbg('game file loaded OK')
+	end
+	dbg('calling finishLoading')
 	finishLoading()
+	dbg('DONE')
 else
 	vape.Init = finishLoading
 	return vape
