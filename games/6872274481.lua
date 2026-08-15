@@ -9600,7 +9600,8 @@ run(function()
 					for obj, ref in Reference do
 						local visible = Enabled[obj]
 						local part = obj:IsA('Model') and (obj.PrimaryPart or obj:FindFirstChildWhichIsA('BasePart')) or obj
-						local headPos, headVis = if part then gameCamera:WorldToViewportPoint(part.Position + Vector3.new(0, 3, 0)) else Vector3.new(), false
+						local headPos, headVis
+						if part then headPos, headVis = gameCamera:WorldToViewportPoint(part.Position + Vector3.new(0, 3, 0)) else headPos, headVis = Vector3.new(), false end
 						local show = visible and headVis
 						if ref.mode == 'drawing' then
 							ref.bg.Visible = show
