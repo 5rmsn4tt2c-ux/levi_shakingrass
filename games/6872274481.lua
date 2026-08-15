@@ -918,7 +918,7 @@ run(function()
 								if bedwars.StatusEffectMeta[name] then
 									name = bedwars.StatusEffectMeta[name]
 									for num = 1, 3 do
-										name = name:gsub(`_{num}`, '')
+										name = name:gsub('_'..tostring(num), '')
 									end
 
 									if bedwars.EnchantMeta[name] then
@@ -944,7 +944,7 @@ run(function()
 								if bedwars.StatusEffectMeta[name] then
 									name = bedwars.StatusEffectMeta[name]
 									for num = 1, 3 do
-										name = name:gsub(`_{num}`, '')
+										name = name:gsub('_'..tostring(num), '')
 									end
 									if bedwars.EnchantMeta[name] then
 										return name
@@ -11682,7 +11682,7 @@ run(function()
         if not CheatersFlagged[player] then
             CheatersFlagged[player] = true
             whitelist.customtags[player.Name] = {{ text = 'CHEATER', color = Color3.new(1, 0, 0)}}
-            notif('CheatDetector', `{player.Name} flagged for {reason:lower()}ing`, 10, 'info')
+            notif('CheatDetector', tostring(player.Name)..' flagged for '..tostring(reason:lower())..'ing', 10, 'info')
         end
     end
     local function checkPoint(pos, params)
@@ -16194,7 +16194,7 @@ run(function()
     						if Show.Enabled then
     							local itemDisplay = bedwars.ItemMeta[v.itemType] and bedwars.ItemMeta[v.itemType].displayName or v.itemType
     
-    							notif('AutoFish', `You can get {v.amount} {itemDisplay:lower()}{v.amount >= 2 and 's' or ''} on ur next fish`, 20, 'info')
+    							notif('AutoFish', 'You can get '..tostring(v.amount)..' '..tostring(itemDisplay:lower())..tostring(v.amount >= 2 and 's' or '')..' on ur next fish', 20, 'info')
     						end
     
     						if entitylib.isAlive and table.find(Blacklist.ListEnabled, v.itemType) then
@@ -20377,7 +20377,7 @@ run(function()
     			table.insert(slimes, {
     				Data = data, 
     				RootPart = v, 
-    				Name = v.Name:gsub(`_{lplr.Name}`, ''):gsub('Slime', ' Slime')
+    				Name = v.Name:gsub('_'..tostring(lplr.Name), ''):gsub('Slime', ' Slime')
     			})
     		end
     	end
@@ -20386,7 +20386,7 @@ run(function()
 
     local function getPlayer(name)
     	for _, v in playersService:GetPlayers() do
-    		if (`{v.DisplayName} ({v.Name})`) == name then
+    		if (tostring(v.DisplayName)..' ('..tostring(v.Name)..')') == name then
     			return v
     		end
     	end
@@ -20402,7 +20402,7 @@ run(function()
     					local slimes = getSlimes()
 
     					for _, v in slimes do
-    						local dropdown = AutoNoelle.Options[`{v.Name} Target`]
+    						local dropdown = AutoNoelle.Options[tostring(v.Name)..' Target']
     						if dropdown then
     							local player = getPlayer(dropdown.Value)
     							if player and v.Data.Following.Value ~= player.UserId then
@@ -20413,7 +20413,7 @@ run(function()
     									if suc then
     										v.Data.Following.Value = player.UserId
     										if Notify.Enabled then
-    											notif('AutoNoelle', `Directed {v.Name} to {player.DisplayName} ({player.Name})`, 5, 'info')
+    											notif('AutoNoelle', 'Directed '..tostring(v.Name)..' to '..tostring(player.DisplayName)..' ('..tostring(player.Name)..')', 5, 'info')
     										end
     									end
     								end)
@@ -20432,7 +20432,7 @@ run(function()
 
     local function addConnection(plr)
     	if plr:GetAttribute('Team') == lplr:GetAttribute('Team') then
-    		table.insert(friends, `{plr.DisplayName} ({plr.Name})`)
+    		table.insert(friends, tostring(plr.DisplayName)..' ('..tostring(plr.Name)..')')
     		FrostySlime:Change(friends)
     		HealSlime:Change(friends)
     		StickySlime:Change(friends)
@@ -20441,7 +20441,7 @@ run(function()
 
     	vape:Clean(plr:GetAttributeChangedSignal('Team'):Connect(function()
     		if plr:GetAttribute('Team') == lplr:GetAttribute('Team') then
-    			table.insert(friends, `{plr.DisplayName} ({plr.Name})`)
+    			table.insert(friends, tostring(plr.DisplayName)..' ('..tostring(plr.Name)..')')
     			FrostySlime:Change(friends)
     			HealSlime:Change(friends)
     			StickySlime:Change(friends)
@@ -21622,11 +21622,11 @@ run(function()
     					local text = {}
     					for _, v in data.dropData.drops do
     						local itemDisplay = bedwars.ItemMeta[v.itemType] and bedwars.ItemMeta[v.itemType].displayName or v.itemType
-    						table.insert(text, `{v.amount} {itemDisplay:lower()}{v.amount >= 2 and 's' or ''}`)
+    						table.insert(text, tostring(v.amount)..' '..tostring(itemDisplay:lower())..tostring(v.amount >= 2 and 's' or ''))
     					end
 
     					if #text > 0 and (not Teammates.Enabled or lplr.Team ~= data.catchingPlayer.Team) then
-    						notif('FishermanSpy', `{data.catchingPlayer.Name} caught {table.concat(text, ', ')}`, 20, 'info')
+    						notif('FishermanSpy', tostring(data.catchingPlayer.Name)..' caught '..tostring(table.concat(text, ', ')), 20, 'info')
     					end
     				end
     			end))
