@@ -15556,6 +15556,7 @@ end)
 run(function()
 	local CatVapeAutoBank
 	local CatVapeWhitelist
+	local CatVapeGUICheck
 	local CatVapeUIToggle
 	local CatVapeUI
 	local CatVapeReference, CatVapeBlacklist = {}, {}
@@ -15681,7 +15682,7 @@ run(function()
 								end)
 							end
 						end
-					elseif entitylib.isAlive then
+					elseif entitylib.isAlive and (not CatVapeGUICheck.Enabled or bedwars.AppController:isAppOpen('BedwarsItemShopApp')) then
 						near = true
 						for _, v in CatVapeReference do
 							v.Velocity = Vector3.zero
@@ -15721,6 +15722,11 @@ run(function()
 				CatVapeAutoBank:Toggle()
 			end
 		end
+	})
+	CatVapeGUICheck = CatVapeAutoBank:CreateToggle({
+		Name = 'GUI Check',
+		Default = true,
+		Tooltip = 'Only retrieve items when the shop is open'
 	})
 	CatVapeUIToggle = CatVapeAutoBank:CreateToggle({Name = 'Display resources', Default = true})
 end)
