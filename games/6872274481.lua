@@ -27414,23 +27414,34 @@ run(function()
 
     local function hrTrackTarget(char)
         if not char or hrHooked[char] then return end
-        -- BedWars stores health as a custom attribute, NOT Humanoid.Health.
-        if char:GetAttribute('Health') == nil then
+        -- LastDamageTakenTime updates every time the entity takes damage — the
+        -- cleanest "a hit registered" signal, and it fires even on practice
+        -- dummies whose health resets. Fall back to the Health attribute drop
+        -- if that attribute isn't present on this entity.
+        local hasLDT = char:GetAttribute('LastDamageTakenTime') ~= nil
+        local hasHP = char:GetAttribute('Health') ~= nil
+        if not hasLDT and not hasHP then
             hrNoAttrCount += 1
             return
         end
         hrHooked[char] = true
         hrHookCount += 1
-        local lastH = char:GetAttribute('Health') or 0
-        local conn
-        conn = char:GetAttributeChangedSignal('Health'):Connect(function()
-            local h = char:GetAttribute('Health')
-            if h and h < lastH - 0.01 then
-                table.insert(hrReg, tick())  -- a hit registered (health dropped)
-            end
-            if h then lastH = h end
-        end)
-        Killaura:Clean(conn)
+        if hasLDT then
+            local conn = char:GetAttributeChangedSignal('LastDamageTakenTime'):Connect(function()
+                table.insert(hrReg, tick())  -- entity took damage = a hit registered
+            end)
+            Killaura:Clean(conn)
+        else
+            local lastH = char:GetAttribute('Health') or 0
+            local conn = char:GetAttributeChangedSignal('Health'):Connect(function()
+                local h = char:GetAttribute('Health')
+                if h and h < lastH - 0.01 then
+                    table.insert(hrReg, tick())
+                end
+                if h then lastH = h end
+            end)
+            Killaura:Clean(conn)
+        end
     end
 
     local function hrLoggerStep()
