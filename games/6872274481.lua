@@ -27393,6 +27393,7 @@ run(function()
     local hrHooked = setmetatable({}, {__mode = 'k'})
     local hrFile = 'levi_shakingrass/hitreg_debug.txt'
     local hrLimiterStreak = 0
+    local hrHookCount, hrNoAttrCount = 0, 0  -- diagnostics: did health-tracking attach?
 
     local function hrLog(line)
         pcall(function()
@@ -27414,8 +27415,12 @@ run(function()
     local function hrTrackTarget(char)
         if not char or hrHooked[char] then return end
         -- BedWars stores health as a custom attribute, NOT Humanoid.Health.
-        if char:GetAttribute('Health') == nil then return end
+        if char:GetAttribute('Health') == nil then
+            hrNoAttrCount += 1
+            return
+        end
         hrHooked[char] = true
+        hrHookCount += 1
         local lastH = char:GetAttribute('Health') or 0
         local conn
         conn = char:GetAttributeChangedSignal('Health'):Connect(function()
@@ -27442,8 +27447,8 @@ run(function()
             hrLimiterStreak = 0
             status = (reg >= 34 and 'at cap') or 'ok'
         end
-        hrLog(string.format('[%s] last10s: sent %d | registered %d | dropped %d | %s',
-            os.date('%H:%M:%S'), sent, reg, dropped, status))
+        hrLog(string.format('[%s] last10s: sent %d | registered %d | dropped %d | %s | [diag hooks=%d noAttr=%d]',
+            os.date('%H:%M:%S'), sent, reg, dropped, status, hrHookCount, hrNoAttrCount))
         if hrLimiterStreak == 2 then
             notif('bloopy HitReg', 'Server is eating your hits — lower the rate', 6, 'alert')
         end
@@ -28807,6 +28812,7 @@ run(function()
             if call then
                 hrSent, hrReg = {}, {}
                 hrLimiterStreak = 0
+                hrHookCount, hrNoAttrCount = 0, 0
                 pcall(function()
                     writefile(hrFile, '=== bloopy Hit Reg debug — ' .. os.date('%Y-%m-%d %H:%M:%S') .. ' ===\n'
                         .. 'sent = attacks fired to server | registered = target health drops | normal cap ~34/10s\n'
