@@ -13763,6 +13763,10 @@ run(function()
                                     break
                                 end
                                 pos = (bed.CFrame * CFrame.new(pos)).Position
+                                -- Respect Place Range: only place blocks within that distance of the player
+                                if entitylib.isAlive and (pos - entitylib.character.RootPart.Position).Magnitude > PlaceRange.Value then
+                                    continue
+                                end
                                 if getPlacedBlock(pos) then
                                     continue
                                 end
@@ -13813,6 +13817,8 @@ run(function()
         Min = 1,
         Max = 40,
         Default = 15,
+        Suffix = function(v) return v == 1 and 'stud' or 'studs' end,
+        Tooltip = 'Only place/patch blocks within this distance of you; lower it to build tighter around the bed'
     })
     Layers = BedProtector:CreateSlider({
         Name = 'Layers',
