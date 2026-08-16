@@ -5623,12 +5623,17 @@ run(function()
 
     local paFinishAndCopy
 
+    local paLastShotRoot, paLastShotTime = nil, 0
     local function paDebugCapture(plr, origin, aimPart, predImpact, predTime, projmeta)
         local root = plr.RootPart
         if not root then return end
         local now = workspace:GetServerTimeNow()
+        -- Dedupe: the launch hook fires twice per trigger-pull (predict + replicate).
+        if root == paLastShotRoot and now - paLastShotTime < 0.03 then return end
+        paLastShotRoot, paLastShotTime = root, now
         local bias, epochRate = prediction.getLatencyBias()
         local spread, spreadN = prediction.getResidualSpread()
+        local latency = prediction.getLatency()
         -- What are we shooting WITH (crossbow / headhunter / bow ...) and firing?
         local weapon = 'unknown'
         pcall(function()
@@ -5641,7 +5646,10 @@ run(function()
         table.insert(paDebugPending, {
             id = paShotId,
             fireTime = now,
-            arriveTime = now + (predTime or 0),
+            -- Measure at travelTime + latency: predImpact was extrapolated from the
+            -- replicated (stale-by-latency) position by exactly latency+travelTime, so
+            -- the honest comparison waits that long for the replicated stream to catch up.
+            arriveTime = now + (predTime or 0) + latency,
             travelTime = predTime or 0,
             root = root,
             plrName = (plr.Player and plr.Player.Name) or 'NPC',
@@ -5652,7 +5660,7 @@ run(function()
             fireVel = root.Velocity,
             aimOffset = (typeof(aimPart) == 'Vector3') and (aimPart - root.Position) or Vector3.zero,
             predImpact = predImpact,
-            latency = prediction.getLatency(),
+            latency = latency,
             rawLatency = prediction.getRawLatency(),
             bias = bias,
             epochRate = epochRate,
