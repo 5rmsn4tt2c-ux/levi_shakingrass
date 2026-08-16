@@ -5593,10 +5593,13 @@ run(function()
     -- along-track = lead/latency off, vertical = jump/gravity off. It also logs
     -- what the model had learned (strafe/turn/jump/knockback) at fire time.
     -- ============================================================
+    local ProjectileAimbot
     local PADebug
     local paDebugPending = {}
     local paShotId = 0
     local paDebugFile = 'levi_shakingrass/pa_debug.txt'
+    local paWeaponStats = {}
+    local paDeathHooked = setmetatable({}, {__mode = 'k'})
 
     local function paLog(line)
         pcall(function()
@@ -5618,12 +5621,22 @@ run(function()
         return string.format('%.' .. (d or 3) .. 'f', n)
     end
 
-    local function paDebugCapture(plr, origin, aimPart, predImpact, predTime)
+    local paFinishAndCopy
+
+    local function paDebugCapture(plr, origin, aimPart, predImpact, predTime, projmeta)
         local root = plr.RootPart
         if not root then return end
         local now = workspace:GetServerTimeNow()
         local bias, epochRate = prediction.getLatencyBias()
         local spread, spreadN = prediction.getResidualSpread()
+        -- What are we shooting WITH (crossbow / headhunter / bow ...) and firing?
+        local weapon = 'unknown'
+        pcall(function()
+            if store.hand and store.hand.tool and store.hand.tool.Name then
+                weapon = store.hand.tool.Name
+            end
+        end)
+        local projName = (projmeta and projmeta.projectile) or 'unknown'
         paShotId += 1
         table.insert(paDebugPending, {
             id = paShotId,
@@ -5632,6 +5645,8 @@ run(function()
             travelTime = predTime or 0,
             root = root,
             plrName = (plr.Player and plr.Player.Name) or 'NPC',
+            weapon = weapon,
+            projName = projName,
             origin = origin,
             firePos = root.Position,
             fireVel = root.Velocity,
@@ -5646,13 +5661,30 @@ run(function()
             motion = prediction.getMotionDebug(root),
             dist = (root.Position - origin).Magnitude,
         })
+
+        -- Auto-copy the log when the target we're shooting dies (the kill).
+        local char = root.Parent
+        if char and not paDeathHooked[char] then
+            paDeathHooked[char] = true
+            local hum = char:FindFirstChildOfClass('Humanoid')
+            if hum then
+                local charName = (plr.Player and plr.Player.Name) or char.Name
+                local conn
+                conn = hum.Died:Connect(function()
+                    if conn then conn:Disconnect() end
+                    task.wait(0.25) -- let the killing shot resolve first
+                    paFinishAndCopy('killed ' .. charName)
+                end)
+                ProjectileAimbot:Clean(conn)
+            end
+        end
     end
 
     local function paDebugWrite(s)
         local root = s.root
         if not root or not root.Parent then
-            paLog(string.format('#%d  target gone before arrival (died/left) | led dist %s | travel %ss',
-                s.id, paFmtN(s.dist, 1), paFmtN(s.travelTime)))
+            paLog(string.format('#%d  target gone before arrival (died/left) | weapon: %s | proj: %s | led dist %s | travel %ss',
+                s.id, tostring(s.weapon), tostring(s.projName), paFmtN(s.dist, 1), paFmtN(s.travelTime)))
             paLog('')
             return
         end
@@ -5673,8 +5705,19 @@ run(function()
         local cross = (dir.Magnitude > 0) and (flatRes - dir * along).Magnitude or flatRes.Magnitude
         local vert = resPA.Y
         local m = s.motion
-        paLog(string.format('#%d  %s | %s | dist %ss | travel %ss',
-            s.id, s.plrName, os.date('%H:%M:%S'), paFmtN(s.dist, 1), paFmtN(s.travelTime)))
+        -- Accumulate per-weapon stats for the end-of-fight summary
+        local st = paWeaponStats[s.weapon or 'unknown']
+        if not st then
+            st = {shots = 0, miss = 0, along = 0, cross = 0, vert = 0}
+            paWeaponStats[s.weapon or 'unknown'] = st
+        end
+        st.shots += 1
+        st.miss += resPA.Magnitude
+        st.along += math.abs(along)
+        st.cross += cross
+        st.vert += math.abs(vert)
+        paLog(string.format('#%d  %s | weapon: %s | proj: %s | %s | dist %ss | travel %ss',
+            s.id, s.plrName, tostring(s.weapon), tostring(s.projName), os.date('%H:%M:%S'), paFmtN(s.dist, 1), paFmtN(s.travelTime)))
         paLog(string.format('   MISS total %ss | along %ss (%s) | cross %ss (dodge) | vert %ss',
             paFmtN(resPA.Magnitude, 1),
             paFmtN(math.abs(along), 1), along >= 0 and 'under-led' or 'over-led',
@@ -5709,6 +5752,37 @@ run(function()
                 paDebugWrite(s)
             end
         end
+    end
+
+    -- Resolve remaining shots, write a per-weapon summary, and copy the whole
+    -- log to the clipboard. Fired automatically when a shot target dies.
+    paFinishAndCopy = function(reason)
+        for i = #paDebugPending, 1, -1 do
+            local s = paDebugPending[i]
+            table.remove(paDebugPending, i)
+            paDebugWrite(s)
+        end
+        paLog('=== SUMMARY (' .. tostring(reason) .. ') ===')
+        local any = false
+        for weap, st in paWeaponStats do
+            if st.shots > 0 then
+                any = true
+                paLog(string.format('%s: %d shots | avg miss %ss | along %ss | cross %ss | vert %ss',
+                    weap, st.shots,
+                    paFmtN(st.miss / st.shots, 1), paFmtN(st.along / st.shots, 1),
+                    paFmtN(st.cross / st.shots, 1), paFmtN(st.vert / st.shots, 1)))
+            end
+        end
+        if not any then paLog('(no measured shots)') end
+        paLog('')
+        local copied = false
+        pcall(function()
+            if setclipboard and isfile and isfile(paDebugFile) then
+                setclipboard(readfile(paDebugFile))
+                copied = true
+            end
+        end)
+        notif('Projectile Aimbot', (copied and 'Debug copied to clipboard' or 'Debug saved (clipboard unavailable)') .. ' — ' .. tostring(reason), 6, 'info')
     end
     
     local function getMousePosition()
@@ -5745,8 +5819,7 @@ run(function()
     	end
     	return
     end
-    
-    local ProjectileAimbot
+
     ProjectileAimbot = vape.Categories.Blatant:CreateModule({
     	Name = 'Projectile Aimbot',
     	Disabled = not canDebug,
@@ -5813,7 +5886,7 @@ run(function()
     					local calc, predImpact, predTime = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos, projmeta.projectile == 'telepearl' and Vector3.zero or plr.RootPart.Velocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, nil, plr.RootPart)
     					if calc then
     						if PADebug and PADebug.Enabled then
-    							paDebugCapture(plr, offsetpos, targetpos, predImpact, predTime)
+    							paDebugCapture(plr, offsetpos, targetpos, predImpact, predTime, projmeta)
     						end
     						targetinfo.Targets[plr] = tick() + 1
     						return {
@@ -5895,11 +5968,13 @@ run(function()
     	Function = function(call)
     		if call then
     			paDebugPending = {}
+    			paWeaponStats = {}
     			pcall(function()
     				writefile(paDebugFile, '=== Projectile Aimbot debug — ' .. os.date('%Y-%m-%d %H:%M:%S') .. ' ===\n'
-    					.. 'along = lead/latency error (under-led = arrow behind them) | cross = they dodged | vert = jump/gravity\n\n')
+    					.. 'along = lead/latency error (under-led = arrow behind them) | cross = they dodged | vert = jump/gravity\n'
+    					.. 'auto-copies to clipboard when the target you are shooting dies\n\n')
     			end)
-    			notif('Projectile Aimbot', 'Debug logging to pa_debug.txt', 5, 'info')
+    			notif('Projectile Aimbot', 'Debug on — auto-copies on kill', 5, 'info')
     		end
     	end,
     	Tooltip = 'Logs each shot vs where the target actually was, to pa_debug.txt in your workspace',
