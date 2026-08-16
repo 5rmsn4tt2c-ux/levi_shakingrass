@@ -404,7 +404,7 @@ local function notif(...) return vape:CreateNotification(...) end
 local loadMessages = {
 	'king auto the best',
 	'manny blantant',
-	'king ben don\'t cheat',
+	'bloopybestkav2 don\'t cheat',
 	'king draco worst solo q',
 	'kolipoo is the best',
 	'we love kolipoo',
@@ -27292,9 +27292,9 @@ run(function()
     })
 end)
 
--- bloopybestkav2
+-- king ben
 run(function()
-    -- bloopybestkav2: compatibility shims for host builds missing these globals
+    -- king ben: compatibility shims for host builds missing these globals
     local getAccountTier = getAccountTier or function() return 0 end
     local isFrozen = isFrozen or function() return false end
     local vapeTargetInfo = vapeTargetInfo or {Targets = {}}
@@ -27619,7 +27619,7 @@ run(function()
                     RangeCirclePart:Destroy()
                     RangeCirclePart = nil
                 end
-                notif("bloopybestkav2 - Range Visualiser Circle", "There was an error creating the circle. Disabling...", 2)
+                notif("king ben - Range Visualiser Circle", "There was an error creating the circle. Disabling...", 2)
             end)
         end
     end
@@ -28214,7 +28214,7 @@ run(function()
     end
     
     Killaura = vape.Categories.Blatant:CreateModule({
-        Name = 'bloopybestkav2',
+        Name = 'king ben',
         Function = function(callback)
             if callback then
 				local attacked = {}
@@ -28241,7 +28241,7 @@ run(function()
                 if Mouse and LegitAura and Mouse.Enabled and LegitAura.Enabled then
                     Mouse:Toggle(false)
                     LegitAura:Toggle(false)
-                    notif("bloopybestkav2", "yo u cant have require mouse down AND swing only both on at da same time turned both off 4 u", 5)
+                    notif("king ben", "yo u cant have require mouse down AND swing only both on at da same time turned both off 4 u", 5)
                 end
 
                 if RangeCircle.Enabled then
@@ -28756,7 +28756,7 @@ run(function()
             if callback and LegitAura and LegitAura.Enabled then
                 Mouse:Toggle(false)
                 LegitAura:Toggle(false)
-                notif("bloopybestkav2", "yo u cant have require mouse down AND swing only on at da same time turned both off 4 u ", 5)
+                notif("king ben", "yo u cant have require mouse down AND swing only on at da same time turned both off 4 u ", 5)
             end
         end
     })
@@ -29058,7 +29058,7 @@ run(function()
             if callback and Mouse and Mouse.Enabled then
                 LegitAura:Toggle(false)
                 Mouse:Toggle(false)
-                notif("bloopybestkav2", "yo u cant have swing only AND require mouse down on at da same time lol turned both off 4 u ", 5)
+                notif("king ben", "yo u cant have swing only AND require mouse down on at da same time lol turned both off 4 u ", 5)
             end
         end
     })
@@ -29087,7 +29087,7 @@ run(function()
     })
     SophiaCheck = Killaura:CreateToggle({
         Name = 'Sophia Check',
-        Tooltip = 'Stops bloopybestkav2 ONLY when completely frozen (uses global isFrozen)',
+        Tooltip = 'Stops king ben ONLY when completely frozen (uses global isFrozen)',
         Function = function(callback)
         end,
         Default = false
