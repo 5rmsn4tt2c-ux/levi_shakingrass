@@ -15554,6 +15554,178 @@ run(function()
 end)
 
 run(function()
+	local CatVapeAutoBank
+	local CatVapeWhitelist
+	local CatVapeUIToggle
+	local CatVapeUI
+	local CatVapeReference, CatVapeBlacklist = {}, {}
+	local CatVapeItems = {}
+
+	local function cvGetShopNPC()
+		local shop, items, upgrades, newid = nil, false, false, nil
+		if entitylib.isAlive then
+			local localPosition = entitylib.character.RootPart.Position
+			for _, v in store.shop do
+				if v.RootPart and v.RootPart.Parent and (v.RootPart.Position - localPosition).Magnitude <= 30 and not entitylib.EntityPosition({
+					Origin = v.RootPart.Position,
+					Range = 40,
+					Part = 'RootPart',
+					Players = true
+				}) then
+					shop = v.Upgrades or v.Shop or nil
+					upgrades = upgrades or v.Upgrades
+					items = items or v.Shop
+					newid = v.Shop and v.Id or newid
+				end
+			end
+		end
+		return shop, items, upgrades, newid
+	end
+
+	local function cvAdded(itemType)
+		local item = Instance.new('ImageLabel')
+		item.Image = bedwars.getIcon({itemType = itemType}, true)
+		item.Size = UDim2.fromOffset(32, 32)
+		item.Name = itemType
+		item.BackgroundTransparency = 1
+		item.LayoutOrder = #CatVapeUI:GetChildren()
+		item.Parent = CatVapeUI
+		local itemtext = Instance.new('TextLabel')
+		itemtext.Name = 'Amount'
+		itemtext.Size = UDim2.fromScale(1, 1)
+		itemtext.BackgroundTransparency = 1
+		itemtext.Text = ''
+		itemtext.TextColor3 = Color3.new(1, 1, 1)
+		itemtext.TextSize = 16
+		itemtext.TextStrokeTransparency = 0.3
+		itemtext.Font = Enum.Font.Arial
+		itemtext.Parent = item
+		CatVapeItems[itemType] = {Amount = 0, Object = itemtext}
+	end
+
+	local function cvRemoved(part)
+		local index = table.find(CatVapeReference, part)
+		if index then
+			table.remove(CatVapeReference, index)
+		end
+	end
+
+	CatVapeAutoBank = vape.Categories.Inventory:CreateModule({
+		Name = 'CatVape AutoBank',
+		Function = function(callback)
+			if callback then
+				CatVapeUI = Instance.new('Frame')
+				CatVapeUI.Size = UDim2.new(1, 0, 0, 32)
+				CatVapeUI.AnchorPoint = Vector2.new(0.5, 0)
+				CatVapeUI.Position = UDim2.new(0.5, 0, 0, -240)
+				CatVapeUI.BackgroundTransparency = 1
+				CatVapeUI.Visible = CatVapeUIToggle.Enabled
+				CatVapeUI.Parent = vape.gui
+				CatVapeAutoBank:Clean(CatVapeUI)
+				local Sort = Instance.new('UIListLayout')
+				Sort.FillDirection = Enum.FillDirection.Horizontal
+				Sort.HorizontalAlignment = Enum.HorizontalAlignment.Center
+				Sort.SortOrder = Enum.SortOrder.LayoutOrder
+				Sort.Parent = CatVapeUI
+				for _, v in CatVapeWhitelist.ListEnabled do
+					cvAdded(v)
+				end
+
+				local near = false
+				local base = CFrame.new(1e3, 1e5, 1e3)
+				local rows = Random.new():NextInteger(0, 20000)
+				CatVapeAutoBank:Clean(runService.PreRender:Connect(function()
+					local new = {}
+					for i, v in CatVapeReference do
+						if v and v.Parent and v.Parent == workspace.ItemDrops then
+							new[v.Name] = (new[v.Name] or 0) + (v:GetAttribute('Amount') or 0)
+							v.Velocity = Vector3.zero
+							v.CFrame = near and entitylib.character.Head.CFrame or base + Vector3.new((i % rows) * 1200, 0, math.floor(i / rows) * 1200)
+						elseif v and v.Parent then
+							cvRemoved(v)
+						end
+					end
+					for i, v in CatVapeItems do
+						v.Amount = new[i] or 0
+						v.Object.Text = tostring(v.Amount)
+					end
+				end))
+
+				repeat
+					local hotbar = lplr.PlayerGui:FindFirstChild('hotbar')
+					local hotbarFrame = hotbar and hotbar:FindFirstChild('1')
+					hotbar = hotbarFrame and hotbarFrame:FindFirstChild('HotbarHealthbarContainer')
+					if hotbar then
+						CatVapeUI.Position = UDim2.new(0.5, 0, 0, (hotbar.AbsolutePosition.Y + guiService:GetGuiInset().Y) - 60)
+					end
+
+					if entitylib.isAlive and not cvGetShopNPC() then
+						near = false
+						for _, v in store.inventory.inventory.items do
+							local name = v.tool and v.tool.Name or nil
+							if name and table.find(CatVapeWhitelist.ListEnabled, name) and (CatVapeBlacklist[name] or 0) < tick() then
+								task.spawn(function()
+									local part = bedwars.Client:Get(remotes.DropItem):CallServer({
+										item = v.tool,
+										amount = v.amount
+									})
+									if CatVapeAutoBank.Enabled and part and part.Parent and not table.find(CatVapeReference, part) then
+										table.insert(CatVapeReference, part)
+										part:ClearAllChildren()
+										part.AncestryChanged:Once(function()
+											cvRemoved(part)
+										end)
+									elseif CatVapeAutoBank.Enabled then
+										CatVapeBlacklist[name] = tick() + 5
+									end
+								end)
+							end
+						end
+					elseif entitylib.isAlive then
+						near = true
+						for _, v in CatVapeReference do
+							v.Velocity = Vector3.zero
+							v.CFrame = entitylib.character.Head.CFrame
+							task.spawn(function()
+								bedwars.Client:Get(remotes.PickupItem):CallServerAsync({ itemDrop = v }):andThen(function(suc)
+									if suc then cvRemoved(v) end
+								end)
+							end)
+						end
+					end
+					task.wait(0.1)
+				until not CatVapeAutoBank.Enabled
+			else
+				repeat
+					for _, v in CatVapeReference do
+						v.Velocity = Vector3.zero
+						v.CFrame = entitylib.character.Head.CFrame
+						task.spawn(function()
+							bedwars.Client:Get(remotes.PickupItem):CallServerAsync({ itemDrop = v }):andThen(function(suc)
+								if suc then cvRemoved(v) end
+							end)
+						end)
+					end
+					task.wait()
+				until CatVapeAutoBank.Enabled
+			end
+		end,
+		Tooltip = 'Drops whitelisted resources and floats them in the sky. Retrieves them when near a shop.'
+	})
+	CatVapeWhitelist = CatVapeAutoBank:CreateTextList({
+		Name = 'Whitelist',
+		Default = {'emerald', 'diamond', 'iron'},
+		Function = function()
+			if CatVapeAutoBank.Enabled then
+				CatVapeAutoBank:Toggle()
+				CatVapeAutoBank:Toggle()
+			end
+		end
+	})
+	CatVapeUIToggle = CatVapeAutoBank:CreateToggle({Name = 'Display resources', Default = true})
+end)
+
+run(function()
     local AutoBankV3
     local GUICheckV3
     local PauseAtBase
