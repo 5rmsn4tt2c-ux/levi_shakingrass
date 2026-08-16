@@ -15635,63 +15635,72 @@ run(function()
 		Name = 'CatVape AutoBank',
 		Function = function(callback)
 			if callback then
+				-- Compute a fixed card width so the 0.5 anchor centers cleanly
+				local itemCount = #CatVapeWhitelist.ListEnabled
+				local slotW, slotPad, sidePad = 48, 6, 10
+				local rowW = itemCount > 0 and (itemCount * slotW + (itemCount - 1) * slotPad) or 100
+				local cardW = math.max(rowW + sidePad * 2, 160)
+
 				-- Outer card
 				CatVapeUI = Instance.new('Frame')
 				CatVapeUI.Name = 'CatVapeBankUI'
 				CatVapeUI.AnchorPoint = Vector2.new(0.5, 1)
-				CatVapeUI.Position = UDim2.new(0.5, 0, 1, -80)
-				CatVapeUI.AutomaticSize = Enum.AutomaticSize.X
-				CatVapeUI.Size = UDim2.fromOffset(0, 80)
-				CatVapeUI.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+				CatVapeUI.Position = UDim2.new(0.5, 0, 1, -90)
+				CatVapeUI.Size = UDim2.fromOffset(cardW, 84)
+				CatVapeUI.BackgroundColor3 = Color3.fromRGB(20, 20, 27)
+				CatVapeUI.BackgroundTransparency = 0.05
 				CatVapeUI.BorderSizePixel = 0
 				CatVapeUI.Visible = CatVapeUIToggle.Enabled
 				CatVapeUI.Parent = vape.gui
 				CatVapeAutoBank:Clean(CatVapeUI)
 				Instance.new('UICorner', CatVapeUI).CornerRadius = UDim.new(0, 10)
-				local uiPad = Instance.new('UIPadding', CatVapeUI)
-				uiPad.PaddingLeft   = UDim.new(0, 10)
-				uiPad.PaddingRight  = UDim.new(0, 10)
-				uiPad.PaddingTop    = UDim.new(0, 6)
-				uiPad.PaddingBottom = UDim.new(0, 6)
+				local uiStroke = Instance.new('UIStroke', CatVapeUI)
+				uiStroke.Color = Color3.fromRGB(45, 45, 58)
+				uiStroke.Thickness = 1
+				uiStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-				-- Header row
-				local header = Instance.new('Frame')
-				header.Size = UDim2.new(1, 0, 0, 18)
-				header.BackgroundTransparency = 1
-				header.Parent = CatVapeUI
-				local headerLayout = Instance.new('UIListLayout', header)
-				headerLayout.FillDirection = Enum.FillDirection.Horizontal
-				headerLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-				headerLayout.Padding = UDim.new(0, 5)
+				-- Accent bar at the top
+				local accent = Instance.new('Frame')
+				accent.Size = UDim2.new(1, -20, 0, 2)
+				accent.Position = UDim2.fromOffset(10, 8)
+				accent.BackgroundColor3 = Color3.fromRGB(120, 90, 255)
+				accent.BorderSizePixel = 0
+				accent.Parent = CatVapeUI
+				Instance.new('UICorner', accent).CornerRadius = UDim.new(1, 0)
 
+				-- Status dot
 				cvStatusDot = Instance.new('Frame')
-				cvStatusDot.Size = UDim2.fromOffset(8, 8)
+				cvStatusDot.Size = UDim2.fromOffset(7, 7)
+				cvStatusDot.Position = UDim2.fromOffset(12, 16)
 				cvStatusDot.BackgroundColor3 = Color3.fromRGB(80, 200, 120)
 				cvStatusDot.BorderSizePixel = 0
-				cvStatusDot.Parent = header
+				cvStatusDot.Parent = CatVapeUI
 				Instance.new('UICorner', cvStatusDot).CornerRadius = UDim.new(1, 0)
 
+				-- Title
 				local title = Instance.new('TextLabel')
-				title.Size = UDim2.fromOffset(120, 18)
+				title.Size = UDim2.new(1, -30, 0, 16)
+				title.Position = UDim2.fromOffset(25, 12)
 				title.BackgroundTransparency = 1
 				title.Text = 'CatVape AutoBank'
-				title.TextColor3 = Color3.fromRGB(200, 200, 210)
+				title.TextColor3 = Color3.fromRGB(210, 210, 220)
 				title.TextSize = 12
 				title.Font = Enum.Font.GothamBold
 				title.TextXAlignment = Enum.TextXAlignment.Left
-				title.Parent = header
+				title.Parent = CatVapeUI
 
-				-- Items row
+				-- Items row (centered horizontally)
 				local itemsRow = Instance.new('Frame')
-				itemsRow.Size = UDim2.new(1, 0, 0, 56)
-				itemsRow.Position = UDim2.fromOffset(0, 22)
+				itemsRow.Size = UDim2.new(1, -sidePad * 2, 0, 56)
+				itemsRow.Position = UDim2.fromOffset(sidePad, 26)
 				itemsRow.BackgroundTransparency = 1
-				itemsRow.AutomaticSize = Enum.AutomaticSize.X
 				itemsRow.Parent = CatVapeUI
 				local itemsLayout = Instance.new('UIListLayout', itemsRow)
 				itemsLayout.FillDirection = Enum.FillDirection.Horizontal
+				itemsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 				itemsLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-				itemsLayout.Padding = UDim.new(0, 6)
+				itemsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+				itemsLayout.Padding = UDim.new(0, slotPad)
 
 				-- Swap CatVapeUI to itemsRow for cvAdded
 				local _oldUI = CatVapeUI
@@ -15729,7 +15738,17 @@ run(function()
 						CatVapeUI.Position = UDim2.new(0.5, 0, 0, (hotbar.AbsolutePosition.Y + guiService:GetGuiInset().Y) - 10)
 					end
 
-					if entitylib.isAlive and not cvGetShopNPC() then
+					-- Decide whether to retrieve loot back to the player.
+					-- GUI Check ON  -> only retrieve while the chest GUI is open.
+					-- GUI Check OFF -> retrieve whenever near a shop NPC (original behavior).
+					local shouldRetrieve
+					if CatVapeGUICheck.Enabled then
+						shouldRetrieve = bedwars.AppController:isAppOpen('ChestApp')
+					else
+						shouldRetrieve = cvGetShopNPC() ~= nil
+					end
+
+					if entitylib.isAlive and not shouldRetrieve then
 						near = false
 						cvSetStatus(true)
 						for _, v in store.inventory.inventory.items do
@@ -15752,7 +15771,7 @@ run(function()
 								end)
 							end
 						end
-					elseif entitylib.isAlive and (not CatVapeGUICheck.Enabled or bedwars.AppController:isAppOpen('BedwarsItemShopApp')) then
+					elseif entitylib.isAlive then
 						near = true
 						cvSetStatus(false)
 						for _, v in CatVapeReference do
@@ -15782,7 +15801,7 @@ run(function()
 				until CatVapeAutoBank.Enabled
 			end
 		end,
-		Tooltip = 'Drops whitelisted resources and floats them in the sky. Retrieves them when near a shop.'
+		Tooltip = 'Drops whitelisted resources and floats them in the sky. With GUI Check on, retrieves them only when you open a chest.'
 	})
 	CatVapeWhitelist = CatVapeAutoBank:CreateTextList({
 		Name = 'Whitelist',
@@ -15797,7 +15816,7 @@ run(function()
 	CatVapeGUICheck = CatVapeAutoBank:CreateToggle({
 		Name = 'GUI Check',
 		Default = true,
-		Tooltip = 'Only retrieve items when the shop is open'
+		Tooltip = 'Only teleport the loot back to you when you open a chest'
 	})
 	CatVapeUIToggle = CatVapeAutoBank:CreateToggle({Name = 'Display resources', Default = true})
 end)
