@@ -27378,6 +27378,75 @@ run(function()
     local CustomHitReg
     local CustomHitRegSlider
     local lastCustomHitTime = 0
+
+    -- ============================================================
+    -- HIT REG DEBUG
+    -- Tracks hits SENT (attacks fired to the server) vs REGISTERED (target
+    -- health actually dropped) over a rolling 10s window, so you can see the
+    -- server's rate limiter start eating hits (registered stalls while sent
+    -- keeps climbing). Baseline registered is ~34/10s; when it falls below
+    -- that while you're still sending, the limiter is dropping you.
+    -- Writes levi_shakingrass/hitreg_debug.txt, copies to clipboard on disable.
+    -- ============================================================
+    local HitRegDebug
+    local hrSent, hrReg = {}, {}
+    local hrHooked = setmetatable({}, {__mode = 'k'})
+    local hrFile = 'levi_shakingrass/hitreg_debug.txt'
+    local hrLimiterStreak = 0
+
+    local function hrLog(line)
+        pcall(function()
+            if appendfile then
+                appendfile(hrFile, line .. '\n')
+            else
+                local ex = (isfile and isfile(hrFile) and readfile(hrFile)) or ''
+                writefile(hrFile, ex .. line .. '\n')
+            end
+        end)
+    end
+
+    local function hrPrune(t, now)
+        for i = #t, 1, -1 do
+            if now - t[i] > 10 then table.remove(t, i) end
+        end
+    end
+
+    local function hrTrackTarget(char)
+        if not char or hrHooked[char] then return end
+        local hum = char:FindFirstChildOfClass('Humanoid')
+        if not hum then return end
+        hrHooked[char] = true
+        local lastH = hum.Health
+        local conn
+        conn = hum.HealthChanged:Connect(function(h)
+            if h < lastH - 0.01 then
+                table.insert(hrReg, tick())  -- a hit registered (health dropped)
+            end
+            lastH = h
+        end)
+        Killaura:Clean(conn)
+    end
+
+    local function hrLoggerStep()
+        local now = tick()
+        hrPrune(hrSent, now)
+        hrPrune(hrReg, now)
+        local sent, reg = #hrSent, #hrReg
+        local dropped = math.max(sent - reg, 0)
+        local status
+        if sent >= 30 and reg < sent - 4 then
+            hrLimiterStreak += 1
+            status = 'LIMITER DROPPING ~' .. dropped .. ' hits'
+        else
+            hrLimiterStreak = 0
+            status = (reg >= 34 and 'at cap') or 'ok'
+        end
+        hrLog(string.format('[%s] last10s: sent %d | registered %d | dropped %d | %s',
+            os.date('%H:%M:%S'), sent, reg, dropped, status))
+        if hrLimiterStreak == 2 then
+            notif('bloopy HitReg', 'Server is eating your hits — lower the rate', 6, 'alert')
+        end
+    end
     local AirHit
     local AirHitsChance
     local FROZEN_THRESHOLD = 10
@@ -27494,6 +27563,11 @@ run(function()
 
         if suc and plr then
             if not select(2, whitelist:get(plr)) then  return end
+        end
+
+        if HitRegDebug and HitRegDebug.Enabled then
+            table.insert(hrSent, tick())
+            hrTrackTarget(attackTable.entityInstance)
         end
 
         return AttackRemote:SendToServer(attackTable, ...)
@@ -28723,6 +28797,38 @@ run(function()
         Default = 30,
         Tooltip = 'Maximum hits per second',
         Visible = false
+    })
+    HitRegDebug = Killaura:CreateToggle({
+        Name = 'Hit Reg Debug',
+        Default = false,
+        Tooltip = 'Logs hits sent vs registered (health drops) per 10s to hitreg_debug.txt; copies to clipboard when turned off',
+        Function = function(call)
+            if call then
+                hrSent, hrReg = {}, {}
+                hrLimiterStreak = 0
+                pcall(function()
+                    writefile(hrFile, '=== bloopy Hit Reg debug — ' .. os.date('%Y-%m-%d %H:%M:%S') .. ' ===\n'
+                        .. 'sent = attacks fired to server | registered = target health drops | normal cap ~34/10s\n'
+                        .. 'when registered stalls below sent, the server limiter is eating your hits\n\n')
+                end)
+                notif('bloopy HitReg', 'Hit reg debug ON — logging sent vs registered', 5, 'info')
+                task.spawn(function()
+                    while HitRegDebug and HitRegDebug.Enabled do
+                        hrLoggerStep()
+                        task.wait(1)
+                    end
+                end)
+            else
+                local copied = false
+                pcall(function()
+                    if setclipboard and isfile and isfile(hrFile) then
+                        setclipboard(readfile(hrFile))
+                        copied = true
+                    end
+                end)
+                notif('bloopy HitReg', copied and 'Hit reg log copied to clipboard' or 'Hit reg log saved', 5, 'info')
+            end
+        end
     })
     SyncHits = Killaura:CreateToggle({
         Name = 'Sync Hits',
