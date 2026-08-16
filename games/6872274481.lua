@@ -12996,6 +12996,57 @@ run(function()
 	})
 end)
 
+run(function()
+	local NoFallESP
+
+	NoFallESP = vape.Categories.Blatant:CreateModule({
+		Name = 'NoFall Damage ESP',
+		Function = function(callback)
+			if callback then
+				local tracked = {}
+				local pending = {}
+
+				NoFallESP:Clean(runService.PostSimulation:Connect(function()
+					for _, plr in playersService:GetPlayers() do
+						if plr == lplr then continue end
+						if select(2, whitelist:get(plr)) then continue end
+						local char = plr.Character
+						if not char then tracked[plr] = nil continue end
+						local hum = char:FindFirstChild('Humanoid')
+						local root = char:FindFirstChild('HumanoidRootPart')
+						if not hum or not root or hum.Health <= 0 then continue end
+
+						local vel = root.AssemblyLinearVelocity.Y
+						local prev = tracked[plr] or { vel = 0, health = hum.Health }
+
+						-- Detect: was falling hard, just landed
+						if prev.vel < -45 and vel > -10 and not pending[plr] then
+							local healthBefore = prev.health
+							pending[plr] = true
+							task.delay(0.35, function()
+								pending[plr] = nil
+								if not hum or not hum.Parent then return end
+								-- If they lost less than 2hp from a significant fall, flag them
+								if healthBefore - hum.Health < 2 then
+									notif('NoFallESP', plr.Name .. ' is using NoFall', 8, 'info')
+								end
+							end)
+						end
+
+						tracked[plr] = { vel = vel, health = hum.Health }
+					end
+				end))
+
+				NoFallESP:Clean(function()
+					table.clear(tracked)
+					table.clear(pending)
+				end)
+			end
+		end,
+		Tooltip = 'Detects players using No Fall Damage by tracking fall velocity vs health lost on landing.'
+	})
+end)
+
 --[[
     World
 ]]
