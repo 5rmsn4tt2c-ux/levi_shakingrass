@@ -27413,16 +27413,17 @@ run(function()
 
     local function hrTrackTarget(char)
         if not char or hrHooked[char] then return end
-        local hum = char:FindFirstChildOfClass('Humanoid')
-        if not hum then return end
+        -- BedWars stores health as a custom attribute, NOT Humanoid.Health.
+        if char:GetAttribute('Health') == nil then return end
         hrHooked[char] = true
-        local lastH = hum.Health
+        local lastH = char:GetAttribute('Health') or 0
         local conn
-        conn = hum.HealthChanged:Connect(function(h)
-            if h < lastH - 0.01 then
+        conn = char:GetAttributeChangedSignal('Health'):Connect(function()
+            local h = char:GetAttribute('Health')
+            if h and h < lastH - 0.01 then
                 table.insert(hrReg, tick())  -- a hit registered (health dropped)
             end
-            lastH = h
+            if h then lastH = h end
         end)
         Killaura:Clean(conn)
     end
