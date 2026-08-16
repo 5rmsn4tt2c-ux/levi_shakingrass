@@ -931,6 +931,31 @@ run(function()
 			}
 		end
 	})
+	store.enchantNames = setmetatable({}, {
+		__index = function(self, plr)
+			return {
+				async = function()
+					if plr and plr.Character then
+						for i in plr.Character:GetAttributes() do
+							if i:find('StatusEffect_') and not i:find('_stacks') then
+								local name = bedwars.StatusEffectMeta[({i:gsub('StatusEffect_', '')})[1]]
+								if bedwars.StatusEffectMeta[name] then
+									name = bedwars.StatusEffectMeta[name]
+									for num = 1, 3 do
+										name = name:gsub(`_{num}`, '')
+									end
+									if bedwars.EnchantMeta[name] then
+										return name
+									end
+								end
+							end
+						end
+					end
+					return nil
+				end,
+			}
+		end
+	})
 
 	local function createMethodHook(object, method)
 		local original = object[method]
@@ -6690,110 +6715,264 @@ run(function()
 end)
 
 run(function()
-    local HiveESP
-    local Background
+	local HiveESP
+	local Background
+	local DrawingToggle
+	local Reference = {}
+	local Folder = Instance.new('Folder')
+	Folder.Parent = vape.gui
+	local CoverageFolder = Instance.new('Folder')
+	CoverageFolder.Parent = vape.gui
+	local CoverageRef = {}
+	local CoverageConnections = {}
 
-    local Folder = Instance.new('Folder')
-    Folder.Parent = vape.gui
+	local function Added(ent)
+		if Reference[ent] then return end
+		local Name = playersService:GetNameFromUserIdAsync(ent:GetAttribute('PlacedByUserId')) or 'Unknown'
+		if DrawingToggle and DrawingToggle.Enabled then
+			local bg = Drawing.new('Square')
+			bg.Filled = true
+			bg.Color = Color3.new(0, 0, 0)
+			bg.Transparency = 0.65
+			bg.ZIndex = 1
+			bg.Visible = false
+			local title = Drawing.new('Text')
+			title.Font = 2
+			title.Size = 9
+			title.Color = Color3.fromRGB(255, 200, 50)
+			title.Outline = true
+			title.OutlineColor = Color3.new(0, 0, 0)
+			title.Text = Name .. "'s Beehive"
+			title.ZIndex = 2
+			title.Visible = false
+			local info = Drawing.new('Text')
+			info.Font = 2
+			info.Size = 8
+			info.Color = Color3.fromRGB(200, 200, 200)
+			info.Outline = true
+			info.OutlineColor = Color3.new(0, 0, 0)
+			info.ZIndex = 2
+			info.Visible = false
+			Reference[ent] = {mode = 'drawing', bg = bg, title = title, info = info}
+		else
+			local card = Instance.new('Frame')
+			card.AnchorPoint = Vector2.new(0.5, 1)
+			card.BackgroundColor3 = Color3.new()
+			card.BackgroundTransparency = Background and Background.Enabled and 0.35 or 1
+			card.BorderSizePixel = 0
+			card.AutomaticSize = Enum.AutomaticSize.XY
+			card.Visible = false
+			local cardCorner = Instance.new('UICorner')
+			cardCorner.CornerRadius = UDim.new(0, 4)
+			cardCorner.Parent = card
+			local cardPadding = Instance.new('UIPadding')
+			cardPadding.PaddingLeft = UDim.new(0, 6)
+			cardPadding.PaddingRight = UDim.new(0, 6)
+			cardPadding.PaddingTop = UDim.new(0, 3)
+			cardPadding.PaddingBottom = UDim.new(0, 3)
+			cardPadding.Parent = card
+			local cardLayout = Instance.new('UIListLayout')
+			cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			cardLayout.Padding = UDim.new(0, 1)
+			cardLayout.Parent = card
+			local title = Instance.new('TextLabel')
+			title.Name = 'Title'
+			title.AutomaticSize = Enum.AutomaticSize.XY
+			title.BackgroundTransparency = 1
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 9
+			title.TextColor3 = Color3.fromRGB(255, 200, 50)
+			title.Text = Name .. "'s Beehive"
+			title.LayoutOrder = 1
+			title.Parent = card
+			local info = Instance.new('TextLabel')
+			info.Name = 'Info'
+			info.AutomaticSize = Enum.AutomaticSize.XY
+			info.BackgroundTransparency = 1
+			info.Font = Enum.Font.GothamBold
+			info.TextSize = 8
+			info.TextColor3 = Color3.fromRGB(200, 200, 200)
+			info.RichText = true
+			info.LayoutOrder = 2
+			info.Parent = card
+			card.Parent = Folder
+			Reference[ent] = {mode = 'normal', card = card}
+			if CoveragePlate and CoveragePlate.Enabled then
+				addCoveragePlate(ent)
+			end
+		end
+	end
 
-    local Reference = {}
+	local function removeCoveragePlate(ent)
+		if CoverageRef[ent] then
+			pcall(function() CoverageRef[ent]:Destroy() end)
+			CoverageRef[ent] = nil
+		end
+		if CoverageConnections[ent] then
+			for _, c in CoverageConnections[ent] do pcall(function() c:Disconnect() end) end
+			CoverageConnections[ent] = nil
+		end
+	end
 
-    local function Added(ent)
-    	local Name = playersService:GetNameFromUserIdAsync(ent:GetAttribute('PlacedByUserId')) or 'Unknown'
+	local function addCoveragePlate(ent)
+		removeCoveragePlate(ent)
+		local plate = Instance.new('BillboardGui')
+		plate.Size = UDim2.fromOffset(18, 18)
+		plate.StudsOffset = Vector3.new(0, 3, 0)
+		plate.AlwaysOnTop = true
+		plate.Adornee = ent
+		local covered = 0
+		for _, side in sides do
+			local b = getPlacedBlock(ent.Position + side)
+			if b then covered = covered + 1 end
+		end
+		local label = Instance.new('TextLabel')
+		label.Size = UDim2.fromScale(1, 1)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 9
+		label.TextColor3 = Color3.fromRGB(255, 220, 80)
+		label.Text = covered .. '/6'
+		label.Parent = plate
+		plate.Parent = CoverageFolder
+		CoverageRef[ent] = plate
+		local conns = {}
+		conns[1] = vapeEvents.PlaceBlockEvent.Event:Connect(function(pos)
+			local found = false
+			for _, side in sides do
+				if (ent.Position + side - pos).Magnitude < 0.5 then found = true break end
+			end
+			if found then
+				covered = 0
+				for _, side in sides do
+					if getPlacedBlock(ent.Position + side) then covered = covered + 1 end
+				end
+				label.Text = covered .. '/6'
+			end
+		end)
+		conns[2] = vapeEvents.BreakBlockEvent.Event:Connect(function(pos)
+			local found = false
+			for _, side in sides do
+				if (ent.Position + side - pos).Magnitude < 0.5 then found = true break end
+			end
+			if found then
+				covered = 0
+				for _, side in sides do
+					if getPlacedBlock(ent.Position + side) then covered = covered + 1 end
+				end
+				label.Text = covered .. '/6'
+			end
+		end)
+		CoverageConnections[ent] = conns
+	end
 
-    	local card = Instance.new('Frame')
-    	card.AnchorPoint = Vector2.new(0.5, 1)
-    	card.BackgroundColor3 = Color3.new()
-    	card.BackgroundTransparency = Background.Enabled and 0.35 or 1
-    	card.BorderSizePixel = 0
-    	card.AutomaticSize = Enum.AutomaticSize.XY
-    	card.Visible = false
-    	local cardCorner = Instance.new('UICorner')
-    	cardCorner.CornerRadius = UDim.new(0, 4)
-    	cardCorner.Parent = card
-    	local cardPadding = Instance.new('UIPadding')
-    	cardPadding.PaddingLeft = UDim.new(0, 6)
-    	cardPadding.PaddingRight = UDim.new(0, 6)
-    	cardPadding.PaddingTop = UDim.new(0, 3)
-    	cardPadding.PaddingBottom = UDim.new(0, 3)
-    	cardPadding.Parent = card
-    	local cardLayout = Instance.new('UIListLayout')
-    	cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    	cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    	cardLayout.Padding = UDim.new(0, 1)
-    	cardLayout.Parent = card
+	local function Removing(ent)
+		if Reference[ent] then
+			local ref = Reference[ent]
+			if ref.mode == 'drawing' then
+				pcall(function() ref.bg:Remove() end)
+				pcall(function() ref.title:Remove() end)
+				pcall(function() ref.info:Remove() end)
+			else
+				pcall(function() ref.card:Destroy() end)
+			end
+			Reference[ent] = nil
+		end
+		removeCoveragePlate(ent)
+	end
 
-    	local title = Instance.new('TextLabel')
-    	title.Name = 'Title'
-    	title.AutomaticSize = Enum.AutomaticSize.XY
-    	title.BackgroundTransparency = 1
-    	title.Font = Enum.Font.GothamBold
-    	title.TextSize = 9
-    	title.TextColor3 = Color3.fromRGB(255, 200, 50)
-    	title.Text = Name .. "'s Beehive"
-    	title.LayoutOrder = 1
-    	title.Parent = card
-
-    	local info = Instance.new('TextLabel')
-    	info.Name = 'Info'
-    	info.AutomaticSize = Enum.AutomaticSize.XY
-    	info.BackgroundTransparency = 1
-    	info.Font = Enum.Font.GothamBold
-    	info.TextSize = 8
-    	info.TextColor3 = Color3.fromRGB(200, 200, 200)
-    	info.RichText = true
-    	info.LayoutOrder = 2
-    	info.Parent = card
-
-    	card.Parent = Folder
-    	Reference[ent] = card
-    end
-
-    local function Removing(ent)
-    	if Reference[ent] then
-    		Reference[ent]:Destroy()
-    		Reference[ent] = nil
-    	end
-    end
-
-    HiveESP = vape.Categories.Render:CreateModule({
-    	Name = 'Beehive ESP',
-    	Function = function(call)
-    		if call then
-    			for _, v in collectionService:GetTagged('beehive') do
-    				Added(v)
-    			end
-    			HiveESP:Clean(collectionService:GetInstanceAddedSignal('beehive'):Connect(Added))
-    			HiveESP:Clean(collectionService:GetInstanceRemovedSignal('beehive'):Connect(Removing))
-    			HiveESP:Clean(runService.PreRender:Connect(function()
-    				for ent, card in Reference do
-    					local headPos, headVis = gameCamera:WorldToViewportPoint(ent.Position + Vector3.new(0, 2, 0))
-    					card.Visible = headVis
-    					if headVis then
-    						local level = ent:GetAttribute('Level') or 0
-    						local dist = entitylib.isAlive and math.floor((entitylib.character.RootPart.Position - ent.Position).Magnitude) or 0
-    						card.Info.Text = level .. ' Bee' .. (level >= 2 and 's' or '') .. '  <font color="rgb(130,130,130)">' .. dist .. 'm</font>'
-    						card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
-    					end
-    				end
-    			end))
-    		else
-    			for i in Reference do
-    				Removing(i)
-    			end
-    		end
-    	end,
-    	Tooltip = 'Renders hives locations and info'
-    })
-    Background = HiveESP:CreateToggle({
-    	Name = 'Background',
-    	Function = function(callback)
-    		for _, card in Reference do
-    			card.BackgroundTransparency = callback and 0.35 or 1
-    		end
-    	end,
-    	Default = true
-    })
+	HiveESP = vape.Categories.Render:CreateModule({
+		Name = 'Beehive ESP',
+		Function = function(call)
+			if call then
+				for _, v in collectionService:GetTagged('beehive') do
+					Added(v)
+				end
+				HiveESP:Clean(collectionService:GetInstanceAddedSignal('beehive'):Connect(Added))
+				HiveESP:Clean(collectionService:GetInstanceRemovedSignal('beehive'):Connect(Removing))
+				HiveESP:Clean(runService.PreRender:Connect(function()
+					for ent, obj in Reference do
+						local headPos, headVis = gameCamera:WorldToViewportPoint(ent.Position + Vector3.new(0, 2, 0))
+						local level = ent:GetAttribute('Level') or 0
+						local dist = entitylib.isAlive and math.floor((entitylib.character.RootPart.Position - ent.Position).Magnitude) or 0
+						local infoText = level .. ' Bee' .. (level >= 2 and 's' or '') .. '  ' .. dist .. 'm'
+						if obj.mode == 'drawing' then
+							obj.bg.Visible = headVis
+							obj.title.Visible = headVis
+							obj.info.Visible = headVis
+							if headVis then
+								obj.info.Text = infoText
+								local tw = math.max(obj.title.TextBounds.X, obj.info.TextBounds.X)
+								local th = obj.title.TextBounds.Y + obj.info.TextBounds.Y + 5
+								local w = tw + 12
+								local h = th + 6
+								obj.bg.Size = Vector2.new(w, h)
+								obj.bg.Position = Vector2.new(headPos.X - w / 2, headPos.Y - h)
+								obj.title.Position = obj.bg.Position + Vector2.new(6, 3)
+								obj.info.Position = obj.title.Position + Vector2.new(0, obj.title.TextBounds.Y + 2)
+							end
+						else
+							obj.card.Visible = headVis
+							if headVis then
+								obj.card.Info.Text = level .. ' Bee' .. (level >= 2 and 's' or '') .. '  <font color="rgb(130,130,130)">' .. dist .. 'm</font>'
+								obj.card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
+							end
+						end
+					end
+				end))
+			else
+				for ent in pairs(Reference) do
+					Removing(ent)
+				end
+				for ent in pairs(CoverageRef) do
+					removeCoveragePlate(ent)
+				end
+				pcall(function() Folder:ClearAllChildren() end)
+				pcall(function() CoverageFolder:ClearAllChildren() end)
+			end
+		end,
+		Tooltip = 'Renders hives locations and info'
+	})
+	Background = HiveESP:CreateToggle({
+		Name = 'Background',
+		Function = function(callback)
+			for _, obj in Reference do
+				if obj.mode == 'drawing' then
+					obj.bg.Transparency = callback and 0.65 or 1
+				else
+					obj.card.BackgroundTransparency = callback and 0.35 or 1
+				end
+			end
+		end,
+		Default = true
+	})
+	DrawingToggle = HiveESP:CreateToggle({
+		Name = 'Drawing',
+		Default = false,
+		Tooltip = 'Use Drawing overlay (hidden from Roblox recorder)',
+		Function = function()
+			if HiveESP.Enabled then HiveESP:Toggle(); HiveESP:Toggle() end
+		end
+	})
+	CoveragePlate = HiveESP:CreateToggle({
+		Name = 'Coverage Plate',
+		Default = false,
+		Tooltip = 'Shows plate indicator of block coverage like bed plate',
+		Function = function(call)
+			if call then
+				for ent, obj in Reference do
+					if obj.mode == 'normal' then
+						addCoveragePlate(ent)
+					end
+				end
+			else
+				for ent in pairs(CoverageRef) do
+					removeCoveragePlate(ent)
+				end
+			end
+		end
+	})
 end)
 
 run(function()
@@ -6924,964 +7103,1112 @@ run(function()
 end)
 
 run(function()
-    local GeneratorESP
-    DiamondToggle = nil
-    EmeraldToggle = nil
-    TeamGenToggle = nil
-    ShowOwnTeamGen = nil
-    ShowEnemyTeamGen = nil
-    local UIStyle
-    local CompactDiamondToggle
-    local CompactEmeraldToggle
-    local CollectionService = collectionService
-    local RunService = runService
-    local Reference = {}
-    local Folder = Instance.new('Folder')
-    Folder.Parent = vape.gui
-    local CompactFolder = Instance.new('Folder')
-    CompactFolder.Parent = vape.gui
-    local teamColors = {
-        [1] = {name = "Blue",   color = Color3.fromRGB(85, 150, 255)},
-        [2] = {name = "Orange", color = Color3.fromRGB(255, 150, 50)},
-        [3] = {name = "Pink",   color = Color3.fromRGB(255, 100, 200)},
-        [4] = {name = "Yellow", color = Color3.fromRGB(255, 255, 50)}
-    }
-
-    local generatorTypes = {
-        diamond = {
-            keywords = {'diamond'},
-            color = Color3.fromRGB(85, 200, 255),
-            icon = 'diamond',
-            displayName = 'Diamond',
-            isTeamGen = false
-        },
-        emerald = {
-            keywords = {'emerald'},
-            color = Color3.fromRGB(0, 255, 100),
-            icon = 'emerald',
-            displayName = 'Emerald',
-            isTeamGen = false
-        }
-    }
-
-    local compactUI = Instance.new('ScreenGui')
-    compactUI.Name = 'GeneratorCompactUI'
-    compactUI.Parent = vape.gui
-    compactUI.Enabled = false
-    compactUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    compactUI.DisplayOrder = 10
-    compactUI.ResetOnSpawn = false
-
-    local mainFrame = Instance.new('Frame')
-    mainFrame.Name = 'MainFrame'
-    mainFrame.Parent = compactUI
-    mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    mainFrame.BackgroundTransparency = 0.3
-    mainFrame.BorderSizePixel = 0
-    mainFrame.Position = UDim2.new(1, -8, 1, -8)
-    mainFrame.Size = UDim2.new(0, 120, 0, 100)
-    mainFrame.AnchorPoint = Vector2.new(1, 1)
-
-    local uicorner = Instance.new('UICorner')
-    uicorner.CornerRadius = UDim.new(0, 8)
-    uicorner.Parent = mainFrame
-
-    local title = Instance.new('TextLabel')
-    title.Name = 'Title'
-    title.Parent = mainFrame
-    title.BackgroundTransparency = 1
-    title.Size = UDim2.new(1, 0, 0, 25)
-    title.Position = UDim2.new(0, 0, 0, 5)
-    title.Text = "GEN ESP"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.TextSize = 14
-    title.Font = Enum.Font.GothamBold
-    title.TextStrokeTransparency = 0.5
-    title.TextStrokeColor3 = Color3.new(0, 0, 0)
-
-    local diamondFrame = Instance.new('Frame')
-    diamondFrame.Name = 'DiamondFrame'
-    diamondFrame.Parent = mainFrame
-    diamondFrame.BackgroundTransparency = 1
-    diamondFrame.Size = UDim2.new(1, -20, 0, 25)
-    diamondFrame.Position = UDim2.new(0, 10, 0, 35)
-
-    local diamondIcon = Instance.new('ImageLabel')
-    diamondIcon.Name = 'DiamondIcon'
-    diamondIcon.Parent = diamondFrame
-    diamondIcon.BackgroundTransparency = 1
-    diamondIcon.Size = UDim2.new(0, 18, 0, 18)
-    diamondIcon.Position = UDim2.new(0, 0, 0.5, -9)
-    diamondIcon.Image = bedwars.getIcon({itemType = 'diamond'}, true)
-
-    local diamondTimer = Instance.new('TextLabel')
-    diamondTimer.Name = 'DiamondTimer'
-    diamondTimer.Parent = diamondFrame
-    diamondTimer.BackgroundTransparency = 1
-    diamondTimer.Size = UDim2.new(1, -25, 1, 0)
-    diamondTimer.Position = UDim2.new(0, 25, 0, 0)
-    diamondTimer.Text = "00"
-    diamondTimer.TextColor3 = Color3.fromRGB(85, 200, 255)
-    diamondTimer.TextSize = 18
-    diamondTimer.Font = Enum.Font.GothamBold
-    diamondTimer.TextXAlignment = Enum.TextXAlignment.Left
-
-    local emeraldFrame = Instance.new('Frame')
-    emeraldFrame.Name = 'EmeraldFrame'
-    emeraldFrame.Parent = mainFrame
-    emeraldFrame.BackgroundTransparency = 1
-    emeraldFrame.Size = UDim2.new(1, -20, 0, 25)
-    emeraldFrame.Position = UDim2.new(0, 10, 0, 65)
-
-    local emeraldIcon = Instance.new('ImageLabel')
-    emeraldIcon.Name = 'EmeraldIcon'
-    emeraldIcon.Parent = emeraldFrame
-    emeraldIcon.BackgroundTransparency = 1
-    emeraldIcon.Size = UDim2.new(0, 18, 0, 18)
-    emeraldIcon.Position = UDim2.new(0, 0, 0.5, -9)
-    emeraldIcon.Image = bedwars.getIcon({itemType = 'emerald'}, true)
-
-    local emeraldTimer = Instance.new('TextLabel')
-    emeraldTimer.Name = 'EmeraldTimer'
-    emeraldTimer.Parent = emeraldFrame
-    emeraldTimer.BackgroundTransparency = 1
-    emeraldTimer.Size = UDim2.new(1, -25, 1, 0)
-    emeraldTimer.Position = UDim2.new(0, 25, 0, 0)
-    emeraldTimer.Text = "00"
-    emeraldTimer.TextColor3 = Color3.fromRGB(0, 255, 100)
-    emeraldTimer.TextSize = 18
-    emeraldTimer.Font = Enum.Font.GothamBold
-    emeraldTimer.TextXAlignment = Enum.TextXAlignment.Left
-
-    local diamondTimes = {}
-    local emeraldTimes = {}
-
-    local function getMyTeamId()
-        local myTeam = lplr:GetAttribute('Team')
-        if myTeam == nil then return nil end
-        return tonumber(myTeam)
-    end
-
-    local function getGeneratorTeamId(generatorId)
-        local teamNum = string.match(generatorId, "^(%d+)_generator")
-        if teamNum then
-            return tonumber(teamNum)
-        end
-        return nil
-    end
-
-    local function isTeamGenerator(generatorId)
-        return string.match(generatorId, "^%d+_generator") ~= nil
-    end
-
-    local function getGeneratorType(generatorId)
-        local idLower = string.lower(generatorId)
-
-        if isTeamGenerator(generatorId) then
-            return 'teamgen', {
-                color = Color3.fromRGB(200, 200, 200),
-                icon = 'iron',
-                displayName = 'Team Gen',
-                isTeamGen = true
-            }
-        end
-
-        for genType, config in pairs(generatorTypes) do
-            for _, keyword in ipairs(config.keywords) do
-                if idLower:find(keyword) then
-                    return genType, config
-                end
-            end
-        end
-        return nil, nil
-    end
-
-    local function isGeneratorEnabled(genType, teamId)
-        if genType == 'diamond' then
-            return DiamondToggle.Enabled
-        elseif genType == 'emerald' then
-            return EmeraldToggle.Enabled
-        elseif genType == 'teamgen' then
-            if not TeamGenToggle.Enabled then return false end
-            local myTeamId = getMyTeamId()
-            if not myTeamId or not teamId then return TeamGenToggle.Enabled end
-            if teamId == myTeamId then
-                return ShowOwnTeamGen.Enabled
-            else
-                return ShowEnemyTeamGen.Enabled
-            end
-        end
-        return false
-    end
-
-    local function getProperIcon(iconType)
-        local icon = bedwars.getIcon({itemType = iconType}, true)
-        if not icon or icon == "" then return nil end
-        return icon
-    end
-
-    local function getTierText(generatorAdornee)
-        if not generatorAdornee then return nil end
-        if generatorAdornee.Name ~= 'GeneratorAdornee' then return nil end
-        local reactTree = generatorAdornee:FindFirstChild('RoactTree')
-        if not reactTree then return nil end
-        local teamApp = reactTree:FindFirstChild('TeamOreGeneratorApp')
-        if not teamApp then return nil end
-        local globalGen = teamApp:FindFirstChild('GlobalOreGenerator')
-        if globalGen then
-            for _, child in pairs(globalGen:GetDescendants()) do
-                if child:IsA('TextLabel') then
-                    local text = child.Text
-                    if text:find("Tier") or text:match("^[IVX]+$") or text == "0" then
-                        return child
-                    end
-                end
-            end
-        end
-        local teamGenMain = teamApp:FindFirstChild('TeamGenMain')
-        if teamGenMain then
-            for _, child in pairs(teamGenMain:GetDescendants()) do
-                if child:IsA('TextLabel') then
-                    local text = child.Text
-                    if text:find("Tier") or text:match("^[IVX]+$") or text == "0" then
-                        return child
-                    end
-                end
-            end
-        end
-        return nil
-    end
-
-    local function extractTierLevel(tierText)
-        if not tierText or tierText == "" then return "0" end
-        if tierText == "0" then return "0" end
-        local tierMatch = tierText:match("Tier%s+([IVX]+)")
-        if tierMatch then return tierMatch end
-        if tierText:match("^[IVX]+$") then return tierText end
-        local numTier = tierText:match("Tier%s+(%d+)")
-        if numTier then
-            local num = tonumber(numTier)
-            if num == 0 then return "0"
-            elseif num == 1 then return "I"
-            elseif num == 2 then return "II"
-            elseif num == 3 then return "III"
-            end
-        end
-        return "0"
-    end
-
-    local function getCountdownText(generatorAdornee)
-        if not generatorAdornee then return nil end
-        if generatorAdornee.Name ~= 'GeneratorAdornee' then return nil end
-        local reactTree = generatorAdornee:FindFirstChild('RoactTree')
-        if not reactTree then return nil end
-        local teamApp = reactTree:FindFirstChild('TeamOreGeneratorApp')
-        if not teamApp then return nil end
-        local globalGen = teamApp:FindFirstChild('GlobalOreGenerator')
-        if not globalGen then return nil end
-        local countdown = globalGen:FindFirstChild('Countdown')
-        if not countdown then return nil end
-        local textLabel = countdown:FindFirstChild('Text')
-        if not textLabel then
-            if countdown:IsA('TextLabel') then return countdown end
-            return nil
-        end
-        return textLabel
-    end
-
-    local function extractSecondsFromText(text)
-        if not text or text == "" then return 0 end
-        local seconds = text:match("%[(%d+)%]")
-        if seconds then return tonumber(seconds) or 0 end
-        local justNumber = text:match("(%d+)")
-        if justNumber then return tonumber(justNumber) or 0 end
-        return 0
-    end
-
-    local function getResourceCount(position, resourceType)
-        local count = 0
-        for _, drop in pairs(CollectionService:GetTagged('ItemDrop')) do
-            if drop:FindFirstChild('Handle') then
-                local dropName = drop.Name:lower()
-                if dropName:find(resourceType) then
-                    local dist = (drop.Handle.Position - position).Magnitude
-                    if dist <= 10 then
-                        local amount = drop:GetAttribute('Amount') or 1
-                        count = count + amount
-                    end
-                end
-            end
-        end
-        return count
-    end
-
-    local CompactGenerators = {}
-
-    local function rebuildCompactGenerators()
-        table.clear(CompactGenerators)
-        for _, obj in pairs(workspace:GetDescendants()) do
-            if obj.Name == 'GeneratorAdornee' then
-                local ok, generatorId = pcall(function() return obj:GetAttribute('Id') end)
-                if ok and generatorId and type(generatorId) == 'string' and generatorId ~= '' then
-                    local genType = getGeneratorType(generatorId)
-                    if genType == 'diamond' or genType == 'emerald' then
-                        table.insert(CompactGenerators, {obj = obj, genType = genType})
-                    end
-                end
-            end
-        end
-    end
-
-    local function updateCompactUI()
-        if not GeneratorESP.Enabled or UIStyle.Value ~= 'Compact' then
-            compactUI.Enabled = false
-            return
-        end
-        compactUI.Enabled = true
-        local bestDiamondTime = math.huge
-        local bestEmeraldTime = math.huge
-        for i = #CompactGenerators, 1, -1 do
-            local countdownText
-            local entry = CompactGenerators[i]
-            if not entry.obj or not entry.obj.Parent then
-                table.remove(CompactGenerators, i)
-                continue
-            end
-            countdownText = getCountdownText(entry.obj)
-            if countdownText and countdownText.Text then
-                local timeLeft = extractSecondsFromText(countdownText.Text)
-                if entry.genType == 'diamond' and timeLeft > 0 and timeLeft < bestDiamondTime then
-                    bestDiamondTime = timeLeft
-                elseif entry.genType == 'emerald' and timeLeft > 0 and timeLeft < bestEmeraldTime then
-                    bestEmeraldTime = timeLeft
-                end
-            end
-        end
-        local showDiamond = CompactDiamondToggle and CompactDiamondToggle.Enabled
-        local showEmerald = CompactEmeraldToggle and CompactEmeraldToggle.Enabled
-
-        if not showDiamond and not showEmerald then
-            compactUI.Enabled = false
-            return
-        end
-
-        diamondFrame.Visible = showDiamond
-        emeraldFrame.Visible = showEmerald
-
-        if showDiamond then
-            diamondFrame.Position = UDim2.new(0, 10, 0, 35)
-        end
-        if showEmerald then
-            emeraldFrame.Position = UDim2.new(0, 10, 0, showDiamond and 65 or 35)
-        end
-
-        diamondTimes[1] = bestDiamondTime ~= math.huge and bestDiamondTime or 0
-        emeraldTimes[1] = bestEmeraldTime ~= math.huge and bestEmeraldTime or 0
-        if bestDiamondTime == math.huge then
-            diamondTimer.Text = "00"
-        else
-            diamondTimer.Text = string.format("%02d", bestDiamondTime)
-            if bestDiamondTime <= 5 then
-                diamondTimer.TextColor3 = Color3.fromRGB(255, 50, 50)
-            elseif bestDiamondTime <= 10 then
-                diamondTimer.TextColor3 = Color3.fromRGB(255, 165, 0)
-            else
-                diamondTimer.TextColor3 = Color3.fromRGB(85, 200, 255)
-            end
-        end
-        if bestEmeraldTime == math.huge then
-            emeraldTimer.Text = "00"
-        else
-            emeraldTimer.Text = string.format("%02d", bestEmeraldTime)
-            if bestEmeraldTime <= 5 then
-                emeraldTimer.TextColor3 = Color3.fromRGB(255, 50, 50)
-            elseif bestEmeraldTime <= 10 then
-                emeraldTimer.TextColor3 = Color3.fromRGB(255, 165, 0)
-            else
-                emeraldTimer.TextColor3 = Color3.fromRGB(0, 255, 100)
-            end
-        end
-    end
-
-    local function clearAllESP()
-        Folder:ClearAllChildren()
-        table.clear(Reference)
-        compactUI.Enabled = false
-    end
-
-    local function createESP(generatorAdornee, genType, config, position, teamId)
-        if not isGeneratorEnabled(genType, teamId) then return end
-        if Reference[generatorAdornee] then return end
-
-        if UIStyle.Value == 'Compact' then
-            Reference[generatorAdornee] = {
-                genType = genType,
-                position = position,
-                teamId = teamId,
-                isTeamGen = config.isTeamGen
-            }
-            return
-        end
-
-        local displayColor = config.color
-        local teamName = nil
-        if config.isTeamGen and teamId and teamColors[teamId] then
-            displayColor = teamColors[teamId].color
-            teamName = teamColors[teamId].name
-        end
-
-        local billboard = Instance.new('BillboardGui')
-        billboard.Parent = Folder
-        billboard.Name = 'generator-esp-' .. genType
-        billboard.AlwaysOnTop = true
-        billboard.ClipsDescendants = false
-        billboard.Adornee = generatorAdornee
-
-        if config.isTeamGen then
-            billboard.Size = UDim2.fromOffset(180, 55)
-            billboard.StudsOffsetWorldSpace = Vector3.new(0, 5, 0)
-        else
-            billboard.Size = UDim2.fromOffset(80, 30)
-            billboard.StudsOffsetWorldSpace = Vector3.new(0, 4, 0)
-        end
-
-        local blur = addBlur(billboard)
-        blur.Visible = true
-
-        if config.isTeamGen and teamName then
-            local dot = Instance.new('Frame')
-            dot.Name = 'TeamDot'
-            dot.Parent = billboard
-            dot.Size = UDim2.fromOffset(8, 8)
-            dot.Position = UDim2.new(0, 10, 0, 5)
-            dot.BackgroundColor3 = displayColor
-            dot.BorderSizePixel = 0
-            local dotCorner = Instance.new('UICorner')
-            dotCorner.CornerRadius = UDim.new(1, 0)
-            dotCorner.Parent = dot
-
-            local teamLabel = Instance.new('TextLabel')
-            teamLabel.Name = 'TeamLabel'
-            teamLabel.Parent = billboard
-            teamLabel.BackgroundTransparency = 1
-            teamLabel.Size = UDim2.new(1, 0, 0, 18)
-            teamLabel.Position = UDim2.new(0, 0, 0, 0)
-            teamLabel.Text = teamName
-            teamLabel.TextColor3 = displayColor
-            teamLabel.TextSize = 13
-            teamLabel.Font = Enum.Font.GothamBold
-            teamLabel.TextStrokeTransparency = 0.4
-            teamLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-            teamLabel.TextXAlignment = Enum.TextXAlignment.Center
-        end
-
-        local frame = Instance.new('Frame')
-        frame.Size = config.isTeamGen and UDim2.new(1, 0, 0, 35) or UDim2.fromScale(1, 1)
-        frame.Position = config.isTeamGen and UDim2.new(0, 0, 0, 20) or UDim2.new(0, 0, 0, 0)
-        frame.BackgroundColor3 = Color3.new(0, 0, 0)
-        frame.BackgroundTransparency = 0.3
-        frame.BorderSizePixel = 0
-        frame.Parent = billboard
-
-        if config.isTeamGen and teamId and teamColors[teamId] then
-            local stripe = Instance.new('Frame')
-            stripe.Name = 'TeamStripe'
-            stripe.Parent = frame
-            stripe.Size = UDim2.new(0, 3, 1, 0)
-            stripe.Position = UDim2.new(0, 0, 0, 0)
-            stripe.BackgroundColor3 = displayColor
-            stripe.BorderSizePixel = 0
-            local stripeCorner = Instance.new('UICorner')
-            stripeCorner.CornerRadius = UDim.new(0, 3)
-            stripeCorner.Parent = stripe
-        end
-
-        local uicorner2 = Instance.new('UICorner')
-        uicorner2.CornerRadius = UDim.new(0, 6)
-        uicorner2.Parent = frame
-
-        if config.isTeamGen then
-            local tierLabel = Instance.new('TextLabel')
-            tierLabel.Name = 'Tier'
-            tierLabel.Size = UDim2.new(0, 25, 1, 0)
-            tierLabel.Position = UDim2.new(0, 8, 0, 0)
-            tierLabel.BackgroundTransparency = 1
-            tierLabel.Text = "0"
-            tierLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
-            tierLabel.TextSize = 16
-            tierLabel.Font = Enum.Font.GothamBold
-            tierLabel.TextStrokeTransparency = 0.5
-            tierLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-            tierLabel.Parent = frame
-
-            local resources = {
-                {name = 'iron',    color = Color3.fromRGB(200, 200, 200), icon = 'iron',    xOffset = 35},
-                {name = 'diamond', color = Color3.fromRGB(85, 200, 255),  icon = 'diamond', xOffset = 85},
-                {name = 'emerald', color = Color3.fromRGB(0, 255, 100),   icon = 'emerald', xOffset = 135}
-            }
-
-            local resourceLabels = {}
-            for _, resource in ipairs(resources) do
-                local iconImage = getProperIcon(resource.icon)
-                if iconImage then
-                    local image = Instance.new('ImageLabel')
-                    image.Size = UDim2.fromOffset(18, 18)
-                    image.Position = UDim2.new(0, resource.xOffset, 0.5, 0)
-                    image.AnchorPoint = Vector2.new(0, 0.5)
-                    image.BackgroundTransparency = 1
-                    image.Image = iconImage
-                    image.Parent = frame
-                end
-                local countLabel = Instance.new('TextLabel')
-                countLabel.Name = resource.name .. '_count'
-                countLabel.Size = UDim2.new(0, 25, 1, 0)
-                countLabel.Position = UDim2.new(0, resource.xOffset + 20, 0, 0)
-                countLabel.BackgroundTransparency = 1
-                countLabel.Text = "0"
-                countLabel.TextColor3 = resource.color
-                countLabel.TextSize = 16
-                countLabel.Font = Enum.Font.GothamBold
-                countLabel.TextStrokeTransparency = 0.5
-                countLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-                countLabel.TextXAlignment = Enum.TextXAlignment.Left
-                countLabel.Parent = frame
-                resourceLabels[resource.name] = countLabel
-            end
-
-            Reference[generatorAdornee] = {
-                billboard = billboard,
-                tierLabel = tierLabel,
-                ironLabel = resourceLabels.iron,
-                diamondLabel = resourceLabels.diamond,
-                emeraldLabel = resourceLabels.emerald,
-                genType = genType,
-                position = position,
-                teamId = teamId,
-                isTeamGen = true
-            }
-        else
-            local iconImage = getProperIcon(config.icon)
-            if iconImage then
-                local image = Instance.new('ImageLabel')
-                image.Size = UDim2.fromOffset(20, 20)
-                image.Position = UDim2.new(0, 5, 0.5, 0)
-                image.AnchorPoint = Vector2.new(0, 0.5)
-                image.BackgroundTransparency = 1
-                image.Image = iconImage
-                image.Parent = frame
-            end
-            local timerLabel = Instance.new('TextLabel')
-            timerLabel.Name = 'Timer'
-            timerLabel.Size = UDim2.new(0, 30, 1, 0)
-            timerLabel.Position = UDim2.new(0.5, 0, 0, 0)
-            timerLabel.AnchorPoint = Vector2.new(0.5, 0)
-            timerLabel.BackgroundTransparency = 1
-            timerLabel.Text = "00"
-            timerLabel.TextColor3 = displayColor
-            timerLabel.TextSize = 18
-            timerLabel.Font = Enum.Font.GothamBold
-            timerLabel.TextStrokeTransparency = 0.5
-            timerLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-            timerLabel.Parent = frame
-            local amountLabel = Instance.new('TextLabel')
-            amountLabel.Name = 'Amount'
-            amountLabel.Size = UDim2.new(0, 20, 1, 0)
-            amountLabel.Position = UDim2.new(1, -20, 0, 0)
-            amountLabel.BackgroundTransparency = 1
-            amountLabel.Text = "0"
-            amountLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            amountLabel.TextSize = 16
-            amountLabel.Font = Enum.Font.GothamBold
-            amountLabel.TextStrokeTransparency = 0.5
-            amountLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-            amountLabel.Parent = frame
-            Reference[generatorAdornee] = {
-                billboard = billboard,
-                timerLabel = timerLabel,
-                amountLabel = amountLabel,
-                genType = genType,
-                position = position,
-                teamId = teamId,
-                isTeamGen = false
-            }
-        end
-    end
-
-    local function updateESP(generatorAdornee)
-        local ref = Reference[generatorAdornee]
-        if not ref then return end
-        if UIStyle.Value == 'Compact' then return end
-
-        if ref.isTeamGen then
-            if ref.tierLabel then
-                local tierTextLabel = getTierText(generatorAdornee)
-                if tierTextLabel and tierTextLabel.Text then
-                    ref.tierLabel.Text = extractTierLevel(tierTextLabel.Text)
-                else
-                    ref.tierLabel.Text = "0"
-                end
-            end
-            if ref.ironLabel then
-                ref.ironLabel.Text = tostring(getResourceCount(ref.position, 'iron'))
-            end
-            if ref.diamondLabel then
-                ref.diamondLabel.Text = tostring(getResourceCount(ref.position, 'diamond'))
-            end
-            if ref.emeraldLabel then
-                ref.emeraldLabel.Text = tostring(getResourceCount(ref.position, 'emerald'))
-            end
-        else
-            local countdownText = getCountdownText(generatorAdornee)
-            if countdownText and countdownText.Text then
-                local timeLeft = extractSecondsFromText(countdownText.Text)
-                if ref.timerLabel then
-                    ref.timerLabel.Text = string.format("%02d", timeLeft)
-                    if timeLeft <= 5 then
-                        ref.timerLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
-                    elseif timeLeft <= 10 then
-                        ref.timerLabel.TextColor3 = Color3.fromRGB(255, 165, 0)
-                    else
-                        ref.timerLabel.TextColor3 = generatorTypes[ref.genType].color
-                    end
-                end
-            else
-                if ref.timerLabel then
-                    ref.timerLabel.Text = "00"
-                    ref.timerLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-                end
-            end
-            if ref.amountLabel then
-                ref.amountLabel.Text = tostring(getResourceCount(ref.position, ref.genType))
-            end
-        end
-    end
-
-    local function processGeneratorAdornee(obj)
-        if obj.Name ~= 'GeneratorAdornee' then return end
-        local ok, generatorId = pcall(function() return obj:GetAttribute('Id') end)
-        if not ok then return end
-        if generatorId == nil then return end
-        if type(generatorId) ~= 'string' then return end
-        if generatorId == '' then return end
-
-        local position = obj:GetPivot().Position
-        local genType, config = getGeneratorType(generatorId)
-        if not genType or not config then return end
-
-        local teamId = getGeneratorTeamId(generatorId)
-        if isGeneratorEnabled(genType, teamId) then
-            createESP(obj, genType, config, position, teamId)
-        end
-    end
-
-    local function findAllGenerators()
-        for _, obj in pairs(workspace:GetDescendants()) do
-            pcall(processGeneratorAdornee, obj)
-        end
-    end
-
-    local function refreshESP()
-        clearAllESP()
-        if GeneratorESP.Enabled then
-            findAllGenerators()
-        end
-    end
-
-    local updateTimer = 0
-
-    GeneratorESP = vape.Categories.Render:CreateModule({
-        Name = 'GeneratorESP',
-        Function = function(callback)
-            if callback then
-                findAllGenerators()
-                rebuildCompactGenerators()
-
-                GeneratorESP:Clean(workspace.DescendantAdded:Connect(function(obj)
-                    if not GeneratorESP.Enabled then return end
-                    task.wait(0.2)
-                    pcall(processGeneratorAdornee, obj)
-                    if obj.Name == 'GeneratorAdornee' then
-                        rebuildCompactGenerators()
-                    end
-                end))
-
-                GeneratorESP:Clean(runService.Heartbeat:Connect(function(dt)
-                    if not GeneratorESP.Enabled then return end
-                    updateTimer = updateTimer + dt
-                    if updateTimer < 0.2 then return end
-                    updateTimer = 0
-                    for generatorAdornee, ref in pairs(Reference) do
-                        if generatorAdornee and generatorAdornee.Parent then
-                            updateESP(generatorAdornee)
-                        else
-                            if ref.billboard then ref.billboard:Destroy() end
-                            Reference[generatorAdornee] = nil
-                        end
-                    end
-                    updateCompactUI()
-                end))
-
-                GeneratorESP:Clean(workspace.DescendantRemoving:Connect(function(obj)
-                    if not GeneratorESP.Enabled then return end
-                    if Reference[obj] then
-                        if Reference[obj].billboard then Reference[obj].billboard:Destroy() end
-                        Reference[obj] = nil
-                    end
-                end))
-            else
-                clearAllESP()
-            end
-        end,
-        Tooltip = 'ESP for generators showing timer and item counts'
-    })
-
-    UIStyle = GeneratorESP:CreateDropdown({
-        Name = 'UI Style',
-        List = {'Original', 'Compact'},
-        Default = 'Original',
-        Function = function(val)
-            local isOriginal = val == 'Original'
-            if DiamondToggle then DiamondToggle.Object.Visible = isOriginal end
-            if EmeraldToggle then EmeraldToggle.Object.Visible = isOriginal end
-            if TeamGenToggle then TeamGenToggle.Object.Visible = isOriginal end
-            if ShowOwnTeamGen then ShowOwnTeamGen.Object.Visible = isOriginal and TeamGenToggle.Enabled end
-            if ShowEnemyTeamGen then ShowEnemyTeamGen.Object.Visible = isOriginal and TeamGenToggle.Enabled end
-            if CompactDiamondToggle then CompactDiamondToggle.Object.Visible = not isOriginal end
-            if CompactEmeraldToggle then CompactEmeraldToggle.Object.Visible = not isOriginal end
-            refreshESP()
-        end,
-        Tooltip = 'Choose between original billboard ESP or compact side UI'
-    })
-
-    DiamondToggle = GeneratorESP:CreateToggle({
-        Name = 'Diamond',
-        Function = function() refreshESP() end,
-        Default = false,
-        Visible = true
-    })
-
-    EmeraldToggle = GeneratorESP:CreateToggle({
-        Name = 'Emerald',
-        Function = function() refreshESP() end,
-        Default = false,
-        Visible = true
-    })
-
-    CompactDiamondToggle = GeneratorESP:CreateToggle({
-        Name = 'Compact Diamond',
-        Default = false,
-        Visible = false,
-        Function = function()
-            refreshESP()
-        end
-    })
-
-    CompactEmeraldToggle = GeneratorESP:CreateToggle({
-        Name = 'Compact Emerald',
-        Default = false,
-        Visible = false,
-        Function = function()
-            refreshESP()
-        end
-    })
-
-    TeamGenToggle = GeneratorESP:CreateToggle({
-        Name = 'Team Generators',
-        Function = function(callback)
-            if ShowOwnTeamGen then ShowOwnTeamGen.Object.Visible = callback end
-            if ShowEnemyTeamGen then ShowEnemyTeamGen.Object.Visible = callback end
-            refreshESP()
-        end,
-        Default = true
-    })
-
-    ShowOwnTeamGen = GeneratorESP:CreateToggle({
-        Name = 'Show Own Team',
-        Function = function() refreshESP() end,
-        Default = false,
-        Visible = true
-    })
-
-    ShowEnemyTeamGen = GeneratorESP:CreateToggle({
-        Name = 'Show Enemy Teams',
-        Function = function() refreshESP() end,
-        Default = true,
-        Visible = true
-    })
+	local GeneratorESP
+	DiamondToggle = nil
+	EmeraldToggle = nil
+	TeamGenToggle = nil
+	ShowOwnTeamGen = nil
+	ShowEnemyTeamGen = nil
+	local UIStyle
+	local CompactDiamondToggle
+	local CompactEmeraldToggle
+	local DrawingToggle
+	local CollectionService = collectionService
+	local RunService = runService
+	local Reference = {}
+
+	local teamColors = {
+		[1] = {name = "Blue",   color = Color3.fromRGB(85, 150, 255)},
+		[2] = {name = "Orange", color = Color3.fromRGB(255, 150, 50)},
+		[3] = {name = "Pink",   color = Color3.fromRGB(255, 100, 200)},
+		[4] = {name = "Yellow", color = Color3.fromRGB(255, 255, 50)}
+	}
+
+	local generatorTypes = {
+		diamond = {
+			keywords = {'diamond'},
+			color = Color3.fromRGB(85, 200, 255),
+			icon = 'diamond',
+			displayName = 'Diamond',
+			isTeamGen = false
+		},
+		emerald = {
+			keywords = {'emerald'},
+			color = Color3.fromRGB(0, 255, 100),
+			icon = 'emerald',
+			displayName = 'Emerald',
+			isTeamGen = false
+		}
+	}
+
+	-- Compact UI: Drawing text objects positioned at bottom-right
+	local compactBg = Drawing.new('Square')
+	compactBg.Filled = true
+	compactBg.Color = Color3.fromRGB(20, 20, 20)
+	compactBg.Transparency = 0.3
+	compactBg.Visible = false
+
+	local compactDiamondText = Drawing.new('Text')
+	compactDiamondText.Font = 2
+	compactDiamondText.Size = 14
+	compactDiamondText.Outline = true
+	compactDiamondText.OutlineColor = Color3.new(0, 0, 0)
+	compactDiamondText.Visible = false
+
+	local compactEmeraldText = Drawing.new('Text')
+	compactEmeraldText.Font = 2
+	compactEmeraldText.Size = 14
+	compactEmeraldText.Outline = true
+	compactEmeraldText.OutlineColor = Color3.new(0, 0, 0)
+	compactEmeraldText.Visible = false
+
+	-- Normal mode compact HUD (ScreenGui, visible to recorder)
+	local compactFrame = Instance.new('Frame')
+	compactFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+	compactFrame.BackgroundTransparency = 0.3
+	compactFrame.BorderSizePixel = 0
+	local _compactCorner = Instance.new('UICorner', compactFrame)
+	_compactCorner.CornerRadius = UDim.new(0, 4)
+	compactFrame.AutomaticSize = Enum.AutomaticSize.XY
+	compactFrame.AnchorPoint = Vector2.new(1, 1)
+	compactFrame.Position = UDim2.new(1, -10, 1, -10)
+	compactFrame.Visible = false
+	local _compactPad = Instance.new('UIPadding', compactFrame)
+	_compactPad.PaddingLeft = UDim.new(0, 6); _compactPad.PaddingRight = UDim.new(0, 6)
+	_compactPad.PaddingTop = UDim.new(0, 3); _compactPad.PaddingBottom = UDim.new(0, 3)
+	local _compactLayout = Instance.new('UIListLayout', compactFrame)
+	_compactLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	_compactLayout.Padding = UDim.new(0, 2)
+	local compactDiamondLbl = Instance.new('TextLabel', compactFrame)
+	compactDiamondLbl.Font = Enum.Font.Code
+	compactDiamondLbl.TextSize = 13
+	compactDiamondLbl.BackgroundTransparency = 1
+	compactDiamondLbl.AutomaticSize = Enum.AutomaticSize.XY
+	compactDiamondLbl.LayoutOrder = 1
+	compactDiamondLbl.Visible = false
+	local compactEmeraldLbl = Instance.new('TextLabel', compactFrame)
+	compactEmeraldLbl.Font = Enum.Font.Code
+	compactEmeraldLbl.TextSize = 13
+	compactEmeraldLbl.BackgroundTransparency = 1
+	compactEmeraldLbl.AutomaticSize = Enum.AutomaticSize.XY
+	compactEmeraldLbl.LayoutOrder = 2
+	compactEmeraldLbl.Visible = false
+	compactFrame.Parent = vape.gui
+
+	local diamondTimes = {}
+	local emeraldTimes = {}
+
+	local function getMyTeamId()
+		local myTeam = lplr:GetAttribute('Team')
+		if myTeam == nil then return nil end
+		return tonumber(myTeam)
+	end
+
+	local function getGeneratorTeamId(generatorId)
+		local teamNum = string.match(generatorId, "^(%d+)_generator")
+		if teamNum then return tonumber(teamNum) end
+		return nil
+	end
+
+	local function isTeamGenerator(generatorId)
+		return string.match(generatorId, "^%d+_generator") ~= nil
+	end
+
+	local function getGeneratorType(generatorId)
+		local idLower = string.lower(generatorId)
+		if isTeamGenerator(generatorId) then
+			return 'teamgen', {
+				color = Color3.fromRGB(200, 200, 200),
+				icon = 'iron',
+				displayName = 'Team Gen',
+				isTeamGen = true
+			}
+		end
+		for genType, config in pairs(generatorTypes) do
+			for _, keyword in ipairs(config.keywords) do
+				if idLower:find(keyword) then
+					return genType, config
+				end
+			end
+		end
+		return nil, nil
+	end
+
+	local function isGeneratorEnabled(genType, teamId)
+		if genType == 'diamond' then
+			return DiamondToggle.Enabled
+		elseif genType == 'emerald' then
+			return EmeraldToggle.Enabled
+		elseif genType == 'teamgen' then
+			if not TeamGenToggle.Enabled then return false end
+			local myTeamId = getMyTeamId()
+			if not myTeamId or not teamId then return TeamGenToggle.Enabled end
+			if teamId == myTeamId then
+				return ShowOwnTeamGen.Enabled
+			else
+				return ShowEnemyTeamGen.Enabled
+			end
+		end
+		return false
+	end
+
+	local function getTierText(generatorAdornee)
+		if not generatorAdornee then return nil end
+		if generatorAdornee.Name ~= 'GeneratorAdornee' then return nil end
+		local reactTree = generatorAdornee:FindFirstChild('RoactTree')
+		if not reactTree then return nil end
+		local teamApp = reactTree:FindFirstChild('TeamOreGeneratorApp')
+		if not teamApp then return nil end
+		local globalGen = teamApp:FindFirstChild('GlobalOreGenerator')
+		if globalGen then
+			for _, child in pairs(globalGen:GetDescendants()) do
+				if child:IsA('TextLabel') then
+					local text = child.Text
+					if text:find("Tier") or text:match("^[IVX]+$") or text == "0" then
+						return child
+					end
+				end
+			end
+		end
+		local teamGenMain = teamApp:FindFirstChild('TeamGenMain')
+		if teamGenMain then
+			for _, child in pairs(teamGenMain:GetDescendants()) do
+				if child:IsA('TextLabel') then
+					local text = child.Text
+					if text:find("Tier") or text:match("^[IVX]+$") or text == "0" then
+						return child
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	local function extractTierLevel(tierText)
+		if not tierText or tierText == "" then return "0" end
+		if tierText == "0" then return "0" end
+		local tierMatch = tierText:match("Tier%s+([IVX]+)")
+		if tierMatch then return tierMatch end
+		if tierText:match("^[IVX]+$") then return tierText end
+		local numTier = tierText:match("Tier%s+(%d+)")
+		if numTier then
+			local num = tonumber(numTier)
+			if num == 0 then return "0"
+			elseif num == 1 then return "I"
+			elseif num == 2 then return "II"
+			elseif num == 3 then return "III"
+			end
+		end
+		return "0"
+	end
+
+	local function getCountdownText(generatorAdornee)
+		if not generatorAdornee then return nil end
+		if generatorAdornee.Name ~= 'GeneratorAdornee' then return nil end
+		local reactTree = generatorAdornee:FindFirstChild('RoactTree')
+		if not reactTree then return nil end
+		local teamApp = reactTree:FindFirstChild('TeamOreGeneratorApp')
+		if not teamApp then return nil end
+		local globalGen = teamApp:FindFirstChild('GlobalOreGenerator')
+		if not globalGen then return nil end
+		local countdown = globalGen:FindFirstChild('Countdown')
+		if not countdown then return nil end
+		local textLabel = countdown:FindFirstChild('Text')
+		if not textLabel then
+			if countdown:IsA('TextLabel') then return countdown end
+			return nil
+		end
+		return textLabel
+	end
+
+	local function extractSecondsFromText(text)
+		if not text or text == "" then return 0 end
+		local seconds = text:match("%[(%d+)%]")
+		if seconds then return tonumber(seconds) or 0 end
+		local justNumber = text:match("(%d+)")
+		if justNumber then return tonumber(justNumber) or 0 end
+		return 0
+	end
+
+	local function getResourceCount(position, resourceType)
+		local count = 0
+		for _, drop in pairs(CollectionService:GetTagged('ItemDrop')) do
+			if drop:FindFirstChild('Handle') then
+				local dropName = drop.Name:lower()
+				if dropName:find(resourceType) then
+					local dist = (drop.Handle.Position - position).Magnitude
+					if dist <= 10 then
+						local amount = drop:GetAttribute('Amount') or 1
+						count = count + amount
+					end
+				end
+			end
+		end
+		return count
+	end
+
+	local CompactGenerators = {}
+
+	local function rebuildCompactGenerators()
+		table.clear(CompactGenerators)
+		for _, obj in pairs(workspace:GetDescendants()) do
+			if obj.Name == 'GeneratorAdornee' then
+				local ok, generatorId = pcall(function() return obj:GetAttribute('Id') end)
+				if ok and generatorId and type(generatorId) == 'string' and generatorId ~= '' then
+					local genType = getGeneratorType(generatorId)
+					if genType == 'diamond' or genType == 'emerald' then
+						table.insert(CompactGenerators, {obj = obj, genType = genType})
+					end
+				end
+			end
+		end
+	end
+
+	local function updateCompactUI()
+		if not GeneratorESP.Enabled or UIStyle.Value ~= 'Compact' then
+			compactDiamondText.Visible = false
+			compactEmeraldText.Visible = false
+			compactBg.Visible = false
+			compactDiamondLbl.Visible = false
+			compactEmeraldLbl.Visible = false
+			compactFrame.Visible = false
+			return
+		end
+		local showDiamond = CompactDiamondToggle and CompactDiamondToggle.Enabled
+		local showEmerald = CompactEmeraldToggle and CompactEmeraldToggle.Enabled
+		if not showDiamond and not showEmerald then
+			compactDiamondText.Visible = false
+			compactEmeraldText.Visible = false
+			compactBg.Visible = false
+			compactDiamondLbl.Visible = false
+			compactEmeraldLbl.Visible = false
+			compactFrame.Visible = false
+			return
+		end
+		local bestDiamondTime = math.huge
+		local bestEmeraldTime = math.huge
+		for i = #CompactGenerators, 1, -1 do
+			local entry = CompactGenerators[i]
+			if not entry.obj or not entry.obj.Parent then
+				table.remove(CompactGenerators, i)
+				continue
+			end
+			local countdownText = getCountdownText(entry.obj)
+			if countdownText and countdownText.Text then
+				local timeLeft = extractSecondsFromText(countdownText.Text)
+				if entry.genType == 'diamond' and timeLeft > 0 and timeLeft < bestDiamondTime then
+					bestDiamondTime = timeLeft
+				elseif entry.genType == 'emerald' and timeLeft > 0 and timeLeft < bestEmeraldTime then
+					bestEmeraldTime = timeLeft
+				end
+			end
+		end
+		local useDrawing = DrawingToggle and DrawingToggle.Enabled
+		if useDrawing then
+			compactDiamondLbl.Visible = false
+			compactEmeraldLbl.Visible = false
+			compactFrame.Visible = false
+			local vp = gameCamera.ViewportSize
+			local x = vp.X - 10
+			local y = vp.Y - 10
+			local lineH = 18
+			local lines = 0
+			if showDiamond then
+				local t = bestDiamondTime == math.huge and '00' or string.format('%02d', bestDiamondTime)
+				compactDiamondText.Text = '◇ Di: ' .. t .. 's'
+				if bestDiamondTime <= 5 then
+					compactDiamondText.Color = Color3.fromRGB(255, 50, 50)
+				elseif bestDiamondTime <= 10 then
+					compactDiamondText.Color = Color3.fromRGB(255, 165, 0)
+				else
+					compactDiamondText.Color = Color3.fromRGB(85, 200, 255)
+				end
+				lines = lines + 1
+				compactDiamondText.Position = Vector2.new(x - compactDiamondText.TextBounds.X, y - lineH * lines)
+				compactDiamondText.Visible = true
+			else
+				compactDiamondText.Visible = false
+			end
+			if showEmerald then
+				local t = bestEmeraldTime == math.huge and '00' or string.format('%02d', bestEmeraldTime)
+				compactEmeraldText.Text = '◆ Em: ' .. t .. 's'
+				if bestEmeraldTime <= 5 then
+					compactEmeraldText.Color = Color3.fromRGB(255, 50, 50)
+				elseif bestEmeraldTime <= 10 then
+					compactEmeraldText.Color = Color3.fromRGB(255, 165, 0)
+				else
+					compactEmeraldText.Color = Color3.fromRGB(0, 255, 100)
+				end
+				lines = lines + 1
+				compactEmeraldText.Position = Vector2.new(x - compactEmeraldText.TextBounds.X, y - lineH * lines)
+				compactEmeraldText.Visible = true
+			else
+				compactEmeraldText.Visible = false
+			end
+			if lines > 0 then
+				local w = math.max(
+					showDiamond and compactDiamondText.TextBounds.X or 0,
+					showEmerald and compactEmeraldText.TextBounds.X or 0
+				) + 8
+				local h = lineH * lines + 4
+				compactBg.Size = Vector2.new(w, h)
+				compactBg.Position = Vector2.new(x - w + 4, y - lineH * lines - 2)
+				compactBg.Visible = true
+			else
+				compactBg.Visible = false
+			end
+		else
+			compactDiamondText.Visible = false
+			compactEmeraldText.Visible = false
+			compactBg.Visible = false
+			if showDiamond then
+				local t = bestDiamondTime == math.huge and '00' or string.format('%02d', bestDiamondTime)
+				compactDiamondLbl.Text = '◇ Di: ' .. t .. 's'
+				if bestDiamondTime <= 5 then
+					compactDiamondLbl.TextColor3 = Color3.fromRGB(255, 50, 50)
+				elseif bestDiamondTime <= 10 then
+					compactDiamondLbl.TextColor3 = Color3.fromRGB(255, 165, 0)
+				else
+					compactDiamondLbl.TextColor3 = Color3.fromRGB(85, 200, 255)
+				end
+				compactDiamondLbl.Visible = true
+			else
+				compactDiamondLbl.Visible = false
+			end
+			if showEmerald then
+				local t = bestEmeraldTime == math.huge and '00' or string.format('%02d', bestEmeraldTime)
+				compactEmeraldLbl.Text = '◆ Em: ' .. t .. 's'
+				if bestEmeraldTime <= 5 then
+					compactEmeraldLbl.TextColor3 = Color3.fromRGB(255, 50, 50)
+				elseif bestEmeraldTime <= 10 then
+					compactEmeraldLbl.TextColor3 = Color3.fromRGB(255, 165, 0)
+				else
+					compactEmeraldLbl.TextColor3 = Color3.fromRGB(0, 255, 100)
+				end
+				compactEmeraldLbl.Visible = true
+			else
+				compactEmeraldLbl.Visible = false
+			end
+			compactFrame.Visible = showDiamond or showEmerald
+		end
+	end
+
+	local function removeRef(ref)
+		pcall(function()
+			if ref.mode == 'normal' then
+				if ref.card then ref.card:Destroy() end
+			else
+				if ref.bg then ref.bg:Remove() end
+				if ref.timerLabel then ref.timerLabel:Remove() end
+				if ref.amountLabel then ref.amountLabel:Remove() end
+				if ref.teamLabel then ref.teamLabel:Remove() end
+				if ref.tierLabel then ref.tierLabel:Remove() end
+				if ref.ironLabel then ref.ironLabel:Remove() end
+				if ref.diamondLabel then ref.diamondLabel:Remove() end
+				if ref.emeraldLabel then ref.emeraldLabel:Remove() end
+			end
+		end)
+	end
+
+	local function clearAllESP()
+		for _, ref in pairs(Reference) do
+			removeRef(ref)
+		end
+		table.clear(Reference)
+		compactDiamondText.Visible = false
+		compactEmeraldText.Visible = false
+		compactBg.Visible = false
+		compactDiamondLbl.Visible = false
+		compactEmeraldLbl.Visible = false
+		compactFrame.Visible = false
+	end
+
+	local function createESP(generatorAdornee, genType, config, position, teamId)
+		if not isGeneratorEnabled(genType, teamId) then return end
+		if Reference[generatorAdornee] then return end
+
+		if UIStyle.Value == 'Compact' then
+			Reference[generatorAdornee] = {
+				genType = genType,
+				position = position,
+				teamId = teamId,
+				isTeamGen = config.isTeamGen
+			}
+			return
+		end
+
+		local displayColor = config.color
+		local teamName = nil
+		if config.isTeamGen and teamId and teamColors[teamId] then
+			displayColor = teamColors[teamId].color
+			teamName = teamColors[teamId].name
+		end
+
+		local useDrawing = DrawingToggle and DrawingToggle.Enabled
+
+		if useDrawing then
+			local bg = Drawing.new('Square')
+			bg.Filled = true
+			bg.Color = Color3.new(0, 0, 0)
+			bg.Transparency = 0.3
+			bg.Visible = false
+
+			if config.isTeamGen then
+				local teamLabel = Drawing.new('Text')
+				teamLabel.Font = 2; teamLabel.Size = 13; teamLabel.Color = displayColor
+				teamLabel.Outline = true; teamLabel.OutlineColor = Color3.new(0, 0, 0)
+				teamLabel.Text = teamName or 'Team'; teamLabel.Visible = false
+				local tierLabel = Drawing.new('Text')
+				tierLabel.Font = 2; tierLabel.Size = 11; tierLabel.Color = Color3.fromRGB(255, 255, 100)
+				tierLabel.Outline = true; tierLabel.OutlineColor = Color3.new(0, 0, 0)
+				tierLabel.Text = 'T:0'; tierLabel.Visible = false
+				local ironLabel = Drawing.new('Text')
+				ironLabel.Font = 2; ironLabel.Size = 11; ironLabel.Color = Color3.fromRGB(200, 200, 200)
+				ironLabel.Outline = true; ironLabel.OutlineColor = Color3.new(0, 0, 0)
+				ironLabel.Text = 'Fe:0'; ironLabel.Visible = false
+				local diamondLabel = Drawing.new('Text')
+				diamondLabel.Font = 2; diamondLabel.Size = 11; diamondLabel.Color = Color3.fromRGB(85, 200, 255)
+				diamondLabel.Outline = true; diamondLabel.OutlineColor = Color3.new(0, 0, 0)
+				diamondLabel.Text = 'Di:0'; diamondLabel.Visible = false
+				local emeraldLabel = Drawing.new('Text')
+				emeraldLabel.Font = 2; emeraldLabel.Size = 11; emeraldLabel.Color = Color3.fromRGB(0, 255, 100)
+				emeraldLabel.Outline = true; emeraldLabel.OutlineColor = Color3.new(0, 0, 0)
+				emeraldLabel.Text = 'Em:0'; emeraldLabel.Visible = false
+				Reference[generatorAdornee] = {
+					mode = 'drawing', adornee = generatorAdornee, bg = bg,
+					teamLabel = teamLabel, tierLabel = tierLabel,
+					ironLabel = ironLabel, diamondLabel = diamondLabel, emeraldLabel = emeraldLabel,
+					genType = genType, position = position, teamId = teamId, isTeamGen = true
+				}
+			else
+				local timerLabel = Drawing.new('Text')
+				timerLabel.Font = 2; timerLabel.Size = 16; timerLabel.Color = displayColor
+				timerLabel.Outline = true; timerLabel.OutlineColor = Color3.new(0, 0, 0)
+				timerLabel.Text = '00'; timerLabel.Visible = false
+				local amountLabel = Drawing.new('Text')
+				amountLabel.Font = 2; amountLabel.Size = 12; amountLabel.Color = Color3.fromRGB(255, 255, 255)
+				amountLabel.Outline = true; amountLabel.OutlineColor = Color3.new(0, 0, 0)
+				amountLabel.Text = 'x0'; amountLabel.Visible = false
+				Reference[generatorAdornee] = {
+					mode = 'drawing', adornee = generatorAdornee, bg = bg,
+					timerLabel = timerLabel, amountLabel = amountLabel,
+					genType = genType, position = position, teamId = teamId, isTeamGen = false
+				}
+			end
+		else
+			-- Normal mode: ScreenGui card
+			local card = Instance.new('Frame')
+			card.BackgroundColor3 = Color3.new(0, 0, 0)
+			card.BackgroundTransparency = 0.35
+			card.BorderSizePixel = 0
+			card.AutomaticSize = Enum.AutomaticSize.XY
+			card.AnchorPoint = Vector2.new(0.5, 1)
+			card.Position = UDim2.fromOffset(0, 0)
+			card.Visible = false
+			local corner = Instance.new('UICorner', card)
+			corner.CornerRadius = UDim.new(0, 4)
+			local pad = Instance.new('UIPadding', card)
+			pad.PaddingLeft = UDim.new(0, 6); pad.PaddingRight = UDim.new(0, 6)
+			pad.PaddingTop = UDim.new(0, 3); pad.PaddingBottom = UDim.new(0, 3)
+			local layout = Instance.new('UIListLayout', card)
+			layout.SortOrder = Enum.SortOrder.LayoutOrder; layout.Padding = UDim.new(0, 1)
+			if config.isTeamGen then
+				local teamLbl = Instance.new('TextLabel', card)
+				teamLbl.Text = teamName or 'Team Gen'; teamLbl.TextColor3 = displayColor
+				teamLbl.Font = Enum.Font.Code; teamLbl.TextSize = 12
+				teamLbl.BackgroundTransparency = 1; teamLbl.AutomaticSize = Enum.AutomaticSize.XY
+				teamLbl.LayoutOrder = 1
+				local tierLbl = Instance.new('TextLabel', card)
+				tierLbl.Text = 'T:0'; tierLbl.TextColor3 = Color3.fromRGB(255, 255, 100)
+				tierLbl.Font = Enum.Font.Code; tierLbl.TextSize = 11
+				tierLbl.BackgroundTransparency = 1; tierLbl.AutomaticSize = Enum.AutomaticSize.XY
+				tierLbl.LayoutOrder = 2
+				local resLbl = Instance.new('TextLabel', card)
+				resLbl.Text = 'Fe:0 Di:0 Em:0'; resLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+				resLbl.Font = Enum.Font.Code; resLbl.TextSize = 11
+				resLbl.BackgroundTransparency = 1; resLbl.AutomaticSize = Enum.AutomaticSize.XY
+				resLbl.LayoutOrder = 3
+				card.Parent = vape.gui
+				Reference[generatorAdornee] = {
+					mode = 'normal', card = card, tierLabel = tierLbl, resourceLabel = resLbl,
+					genType = genType, position = position, teamId = teamId, isTeamGen = true,
+					adornee = generatorAdornee
+				}
+			else
+				local timerLbl = Instance.new('TextLabel', card)
+				timerLbl.Text = '00'; timerLbl.TextColor3 = displayColor
+				timerLbl.Font = Enum.Font.Code; timerLbl.TextSize = 15
+				timerLbl.BackgroundTransparency = 1; timerLbl.AutomaticSize = Enum.AutomaticSize.XY
+				timerLbl.LayoutOrder = 1
+				local amtLbl = Instance.new('TextLabel', card)
+				amtLbl.Text = 'x0'; amtLbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+				amtLbl.Font = Enum.Font.Code; amtLbl.TextSize = 11
+				amtLbl.BackgroundTransparency = 1; amtLbl.AutomaticSize = Enum.AutomaticSize.XY
+				amtLbl.LayoutOrder = 2
+				card.Parent = vape.gui
+				Reference[generatorAdornee] = {
+					mode = 'normal', card = card, timerLabel = timerLbl, amountLabel = amtLbl,
+					genType = genType, position = position, teamId = teamId, isTeamGen = false,
+					adornee = generatorAdornee
+				}
+			end
+		end
+	end
+
+	local function updateESP(generatorAdornee)
+		local ref = Reference[generatorAdornee]
+		if not ref then return end
+		if UIStyle.Value == 'Compact' then return end
+
+		local worldPos = (generatorAdornee:IsA('BasePart') and generatorAdornee.Position)
+			or generatorAdornee:GetPivot().Position
+		local screen, vis = gameCamera:WorldToViewportPoint(worldPos + Vector3.new(0, 5, 0))
+		local sx, sy = screen.X, screen.Y
+
+		if ref.mode == 'normal' then
+			ref.card.Visible = vis
+			if vis then
+				if ref.isTeamGen then
+					local tierTextLabel = getTierText(generatorAdornee)
+					ref.tierLabel.Text = 'T:' .. extractTierLevel(tierTextLabel and tierTextLabel.Text or '')
+					ref.resourceLabel.Text = string.format('Fe:%d Di:%d Em:%d',
+						getResourceCount(ref.position, 'iron'),
+						getResourceCount(ref.position, 'diamond'),
+						getResourceCount(ref.position, 'emerald'))
+				else
+					local countdownText = getCountdownText(generatorAdornee)
+					if countdownText and countdownText.Text then
+						local timeLeft = extractSecondsFromText(countdownText.Text)
+						ref.timerLabel.Text = string.format('%02d', timeLeft)
+						if timeLeft <= 5 then
+							ref.timerLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+						elseif timeLeft <= 10 then
+							ref.timerLabel.TextColor3 = Color3.fromRGB(255, 165, 0)
+						else
+							ref.timerLabel.TextColor3 = generatorTypes[ref.genType].color
+						end
+					else
+						ref.timerLabel.Text = '00'
+						ref.timerLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+					end
+					ref.amountLabel.Text = 'x' .. tostring(getResourceCount(ref.position, ref.genType))
+				end
+				local sz = ref.card.AbsoluteSize
+				if sz.X > 0 then
+					ref.card.Position = UDim2.fromOffset(sx - sz.X / 2, sy - sz.Y)
+				end
+			end
+			return
+		end
+
+		-- Drawing mode
+		if not ref.bg then return end
+		if not vis then
+			ref.bg.Visible = false
+			if ref.timerLabel then ref.timerLabel.Visible = false end
+			if ref.amountLabel then ref.amountLabel.Visible = false end
+			if ref.teamLabel then ref.teamLabel.Visible = false end
+			if ref.tierLabel then ref.tierLabel.Visible = false end
+			if ref.ironLabel then ref.ironLabel.Visible = false end
+			if ref.diamondLabel then ref.diamondLabel.Visible = false end
+			if ref.emeraldLabel then ref.emeraldLabel.Visible = false end
+			return
+		end
+
+		if ref.isTeamGen then
+			local tierTextLabel = getTierText(generatorAdornee)
+			if tierTextLabel and tierTextLabel.Text then
+				ref.tierLabel.Text = 'T:' .. extractTierLevel(tierTextLabel.Text)
+			else
+				ref.tierLabel.Text = 'T:0'
+			end
+			ref.ironLabel.Text = 'Fe:' .. tostring(getResourceCount(ref.position, 'iron'))
+			ref.diamondLabel.Text = 'Di:' .. tostring(getResourceCount(ref.position, 'diamond'))
+			ref.emeraldLabel.Text = 'Em:' .. tostring(getResourceCount(ref.position, 'emerald'))
+
+			local w, h = 110, 62
+			ref.bg.Size = Vector2.new(w, h)
+			ref.bg.Position = Vector2.new(sx - w/2, sy - h)
+			ref.bg.Visible = true
+
+			ref.teamLabel.Position = Vector2.new(sx - ref.teamLabel.TextBounds.X/2, sy - h + 3)
+			ref.teamLabel.Visible = true
+			ref.tierLabel.Position = Vector2.new(sx - w/2 + 5, sy - h + 18)
+			ref.tierLabel.Visible = true
+			local row2y = sy - h + 36
+			ref.ironLabel.Position = Vector2.new(sx - w/2 + 4, row2y)
+			ref.ironLabel.Visible = true
+			ref.diamondLabel.Position = Vector2.new(sx - w/2 + 38, row2y)
+			ref.diamondLabel.Visible = true
+			ref.emeraldLabel.Position = Vector2.new(sx - w/2 + 72, row2y)
+			ref.emeraldLabel.Visible = true
+		else
+			local countdownText = getCountdownText(generatorAdornee)
+			if countdownText and countdownText.Text then
+				local timeLeft = extractSecondsFromText(countdownText.Text)
+				ref.timerLabel.Text = string.format('%02d', timeLeft)
+				if timeLeft <= 5 then
+					ref.timerLabel.Color = Color3.fromRGB(255, 50, 50)
+				elseif timeLeft <= 10 then
+					ref.timerLabel.Color = Color3.fromRGB(255, 165, 0)
+				else
+					ref.timerLabel.Color = generatorTypes[ref.genType].color
+				end
+			else
+				ref.timerLabel.Text = '00'
+				ref.timerLabel.Color = Color3.fromRGB(150, 150, 150)
+			end
+			ref.amountLabel.Text = 'x' .. tostring(getResourceCount(ref.position, ref.genType))
+
+			local w, h = 80, 30
+			ref.bg.Size = Vector2.new(w, h)
+			ref.bg.Position = Vector2.new(sx - w/2, sy - h)
+			ref.bg.Visible = true
+			ref.timerLabel.Position = Vector2.new(sx - ref.timerLabel.TextBounds.X/2, sy - h + 4)
+			ref.timerLabel.Visible = true
+			ref.amountLabel.Position = Vector2.new(sx + 18, sy - h + 8)
+			ref.amountLabel.Visible = true
+		end
+	end
+
+	local function processGeneratorAdornee(obj)
+		if obj.Name ~= 'GeneratorAdornee' then return end
+		local ok, generatorId = pcall(function() return obj:GetAttribute('Id') end)
+		if not ok or generatorId == nil or type(generatorId) ~= 'string' or generatorId == '' then return end
+		local position = obj:GetPivot().Position
+		local genType, config = getGeneratorType(generatorId)
+		if not genType or not config then return end
+		local teamId = getGeneratorTeamId(generatorId)
+		if isGeneratorEnabled(genType, teamId) then
+			createESP(obj, genType, config, position, teamId)
+		end
+	end
+
+	local function findAllGenerators()
+		for _, obj in pairs(workspace:GetDescendants()) do
+			pcall(processGeneratorAdornee, obj)
+		end
+	end
+
+	local function refreshESP()
+		clearAllESP()
+		if GeneratorESP.Enabled then
+			findAllGenerators()
+		end
+	end
+
+	local updateTimer = 0
+
+	GeneratorESP = vape.Categories.Render:CreateModule({
+		Name = 'GeneratorESP',
+		Function = function(callback)
+			if callback then
+				findAllGenerators()
+				rebuildCompactGenerators()
+
+				GeneratorESP:Clean(workspace.DescendantAdded:Connect(function(obj)
+					if not GeneratorESP.Enabled then return end
+					task.wait(0.2)
+					pcall(processGeneratorAdornee, obj)
+					if obj.Name == 'GeneratorAdornee' then
+						rebuildCompactGenerators()
+					end
+				end))
+
+				GeneratorESP:Clean(runService.Heartbeat:Connect(function(dt)
+					if not GeneratorESP.Enabled then return end
+					updateTimer = updateTimer + dt
+					if updateTimer < 0.2 then return end
+					updateTimer = 0
+					for generatorAdornee, ref in pairs(Reference) do
+						if generatorAdornee and generatorAdornee.Parent then
+							updateESP(generatorAdornee)
+						else
+							removeRef(ref)
+							Reference[generatorAdornee] = nil
+						end
+					end
+					updateCompactUI()
+				end))
+
+				GeneratorESP:Clean(workspace.DescendantRemoving:Connect(function(obj)
+					if not GeneratorESP.Enabled then return end
+					if Reference[obj] then
+						removeRef(Reference[obj])
+						Reference[obj] = nil
+					end
+				end))
+			else
+				clearAllESP()
+			end
+		end,
+		Tooltip = 'ESP for generators showing timer and item counts'
+	})
+
+	UIStyle = GeneratorESP:CreateDropdown({
+		Name = 'UI Style',
+		List = {'Original', 'Compact'},
+		Default = 'Original',
+		Function = function(val)
+			local isOriginal = val == 'Original'
+			if DiamondToggle then DiamondToggle.Object.Visible = isOriginal end
+			if EmeraldToggle then EmeraldToggle.Object.Visible = isOriginal end
+			if TeamGenToggle then TeamGenToggle.Object.Visible = isOriginal end
+			if ShowOwnTeamGen then ShowOwnTeamGen.Object.Visible = isOriginal and TeamGenToggle.Enabled end
+			if ShowEnemyTeamGen then ShowEnemyTeamGen.Object.Visible = isOriginal and TeamGenToggle.Enabled end
+			if CompactDiamondToggle then CompactDiamondToggle.Object.Visible = not isOriginal end
+			if CompactEmeraldToggle then CompactEmeraldToggle.Object.Visible = not isOriginal end
+			refreshESP()
+		end,
+		Tooltip = 'Choose between original billboard ESP or compact side UI'
+	})
+
+	DiamondToggle = GeneratorESP:CreateToggle({
+		Name = 'Diamond',
+		Function = function() refreshESP() end,
+		Default = false,
+		Visible = true
+	})
+
+	EmeraldToggle = GeneratorESP:CreateToggle({
+		Name = 'Emerald',
+		Function = function() refreshESP() end,
+		Default = false,
+		Visible = true
+	})
+
+	CompactDiamondToggle = GeneratorESP:CreateToggle({
+		Name = 'Compact Diamond',
+		Default = false,
+		Visible = false,
+		Function = function() refreshESP() end
+	})
+
+	CompactEmeraldToggle = GeneratorESP:CreateToggle({
+		Name = 'Compact Emerald',
+		Default = false,
+		Visible = false,
+		Function = function() refreshESP() end
+	})
+
+	TeamGenToggle = GeneratorESP:CreateToggle({
+		Name = 'Team Generators',
+		Function = function(callback)
+			if ShowOwnTeamGen then ShowOwnTeamGen.Object.Visible = callback end
+			if ShowEnemyTeamGen then ShowEnemyTeamGen.Object.Visible = callback end
+			refreshESP()
+		end,
+		Default = true
+	})
+
+	ShowOwnTeamGen = GeneratorESP:CreateToggle({
+		Name = 'Show Own Team',
+		Function = function() refreshESP() end,
+		Default = false,
+		Visible = true
+	})
+
+	ShowEnemyTeamGen = GeneratorESP:CreateToggle({
+		Name = 'Show Enemy Teams',
+		Function = function() refreshESP() end,
+		Default = true,
+		Visible = true
+	})
+	ShowTier = GeneratorESP:CreateToggle({
+		Name = 'Show Tier',
+		Default = true,
+	})
+	TimerCountdown = GeneratorESP:CreateToggle({
+		Name = 'Timer Countdown',
+		Default = true,
+	})
+	DrawingToggle = GeneratorESP:CreateToggle({
+		Name = 'Drawing',
+		Default = false,
+		Tooltip = 'Use Drawing API (invisible to recorder)',
+		Function = function()
+			if GeneratorESP.Enabled then refreshESP() end
+		end
+	})
 end)
 
 
 run(function()
-    local Health
+	local Health
+	local DrawingToggle
 
-    Health = vape.Categories.Render:CreateModule({
-    	Name = 'Health',
-    	Function = function(callback)
-    		if callback then
-    			local label = Instance.new('TextLabel')
-    			label.Size = UDim2.fromOffset(100, 20)
-    			label.Position = UDim2.new(0.5, 6, 0.5, 30)
-    			label.BackgroundTransparency = 1
-    			label.AnchorPoint = Vector2.new(0.5, 0)
-    			label.Text = entitylib.isAlive and math.round(lplr.Character:GetAttribute('Health')) .. ' ❤️' or ''
-    			label.TextColor3 = entitylib.isAlive and Color3.fromHSV((lplr.Character:GetAttribute('Health') / lplr.Character:GetAttribute('MaxHealth')) / 2.8, 0.86, 1) or Color3.new()
-    			label.TextSize = 18
-    			label.Font = Enum.Font.Arial
-    			label.Parent = vape.gui
-    			Health:Clean(label)
-    			Health:Clean(vapeEvents.AttributeChanged.Event:Connect(function()
-    				label.Text = entitylib.isAlive and math.round(lplr.Character:GetAttribute('Health')) .. ' ❤️' or ''
-    				label.TextColor3 = entitylib.isAlive and Color3.fromHSV((lplr.Character:GetAttribute('Health') / lplr.Character:GetAttribute('MaxHealth')) / 2.8, 0.86, 1) or Color3.new()
-    			end))
-    		end
-    	end,
-    	Tooltip = 'Displays your health in the center of your screen.'
-    })
+	Health = vape.Categories.Render:CreateModule({
+		Name = 'Health',
+		Function = function(callback)
+			if callback then
+				if DrawingToggle and DrawingToggle.Enabled then
+					local label = Drawing.new('Text')
+					label.Size = 18
+					label.Font = 0
+					label.Outline = true
+					label.OutlineColor = Color3.new(0, 0, 0)
+					label.Visible = true
+					local function update()
+						if entitylib.isAlive then
+							local hp = lplr.Character:GetAttribute('Health') or 0
+							local maxhp = lplr.Character:GetAttribute('MaxHealth') or 100
+							label.Text = math.round(hp) .. ' \u{2764}'
+							label.Color = Color3.fromHSV(math.clamp(hp / maxhp, 0, 1) / 2.8, 0.86, 1)
+							local vp = gameCamera.ViewportSize
+							label.Position = Vector2.new(vp.X / 2 + 6, vp.Y / 2 + 30)
+						else
+							label.Text = ''
+						end
+					end
+					update()
+					Health:Clean(vapeEvents.AttributeChanged.Event:Connect(update))
+					Health:Clean(function() pcall(function() label:Remove() end) end)
+				else
+					local label = Instance.new('TextLabel')
+					label.BackgroundTransparency = 1
+					label.TextSize = 18
+					label.Font = Enum.Font.Code
+					label.TextStrokeTransparency = 0
+					label.TextStrokeColor3 = Color3.new(0, 0, 0)
+					label.AnchorPoint = Vector2.new(0, 0)
+					label.Size = UDim2.fromOffset(200, 30)
+					label.Position = UDim2.new(0.5, 6, 0.5, 30)
+					label.Parent = vape.gui
+					local function update()
+						if entitylib.isAlive then
+							local hp = lplr.Character:GetAttribute('Health') or 0
+							local maxhp = lplr.Character:GetAttribute('MaxHealth') or 100
+							label.Text = math.round(hp) .. ' \u{2764}'
+							label.TextColor3 = Color3.fromHSV(math.clamp(hp / maxhp, 0, 1) / 2.8, 0.86, 1)
+						else
+							label.Text = ''
+						end
+					end
+					update()
+					Health:Clean(vapeEvents.AttributeChanged.Event:Connect(update))
+					Health:Clean(function() pcall(function() label:Destroy() end) end)
+				end
+			end
+		end,
+		Tooltip = 'Displays your health in the center of your screen.'
+	})
+	DrawingToggle = Health:CreateToggle({
+		Name = 'Drawing',
+		Default = false,
+		Tooltip = 'Use Drawing overlay (hidden from Roblox recorder)',
+		Function = function()
+			if Health.Enabled then Health:Toggle(); Health:Toggle() end
+		end
+	})
+	TeammateHealth = Health:CreateToggle({
+		Name = 'Show Teammates',
+		Default = false,
+	})
 end)
 
 run(function()
-    local ItemESP
-    local Background
-    local WhitelistOnly
-    local Whitelist = {ListEnabled = {}, Object = nil}
+	local ItemESP
+	local Background
+	local DrawingToggle
+	local WhitelistOnly
+	local Whitelist = {ListEnabled = {}, Object = nil}
+	local Reference = {}
+	local Folder = Instance.new('Folder')
+	Folder.Parent = vape.gui
 
-    local Folder = Instance.new('Folder')
-    Folder.Parent = vape.gui
+	local function Added(ent)
+		if Reference[ent] then return end
+		local Name = bedwars.ItemMeta[ent.Name] and bedwars.ItemMeta[ent.Name].displayName or ent.Name
+		if WhitelistOnly.Enabled and not table.find(Whitelist.ListEnabled, Name:lower()) then
+			return
+		end
+		if DrawingToggle and DrawingToggle.Enabled then
+			local bg = Drawing.new('Square')
+			bg.Filled = true
+			bg.Color = Color3.new(0, 0, 0)
+			bg.Transparency = 0.65
+			bg.ZIndex = 1
+			bg.Visible = false
+			local title = Drawing.new('Text')
+			title.Font = 2
+			title.Size = 9
+			title.Color = Color3.new(1, 1, 1)
+			title.Outline = true
+			title.OutlineColor = Color3.new(0, 0, 0)
+			title.Text = Name
+			title.ZIndex = 2
+			title.Visible = false
+			local info = Drawing.new('Text')
+			info.Font = 2
+			info.Size = 8
+			info.Color = Color3.fromRGB(200, 200, 200)
+			info.Outline = true
+			info.OutlineColor = Color3.new(0, 0, 0)
+			info.ZIndex = 2
+			info.Visible = false
+			Reference[ent] = {mode = 'drawing', bg = bg, title = title, info = info}
+		else
+			local card = Instance.new('Frame')
+			card.AnchorPoint = Vector2.new(0.5, 1)
+			card.BackgroundColor3 = Color3.new()
+			card.BackgroundTransparency = Background and Background.Enabled and 0.35 or 1
+			card.BorderSizePixel = 0
+			card.AutomaticSize = Enum.AutomaticSize.XY
+			card.Visible = false
+			local cardCorner = Instance.new('UICorner')
+			cardCorner.CornerRadius = UDim.new(0, 4)
+			cardCorner.Parent = card
+			local cardPadding = Instance.new('UIPadding')
+			cardPadding.PaddingLeft = UDim.new(0, 6)
+			cardPadding.PaddingRight = UDim.new(0, 6)
+			cardPadding.PaddingTop = UDim.new(0, 3)
+			cardPadding.PaddingBottom = UDim.new(0, 3)
+			cardPadding.Parent = card
+			local cardLayout = Instance.new('UIListLayout')
+			cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			cardLayout.Padding = UDim.new(0, 1)
+			cardLayout.Parent = card
+			local title = Instance.new('TextLabel')
+			title.Name = 'Title'
+			title.AutomaticSize = Enum.AutomaticSize.XY
+			title.BackgroundTransparency = 1
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 9
+			title.TextColor3 = Color3.new(1, 1, 1)
+			title.Text = Name
+			title.LayoutOrder = 1
+			title.Parent = card
+			local info = Instance.new('TextLabel')
+			info.Name = 'Info'
+			info.AutomaticSize = Enum.AutomaticSize.XY
+			info.BackgroundTransparency = 1
+			info.Font = Enum.Font.GothamBold
+			info.TextSize = 8
+			info.TextColor3 = Color3.fromRGB(200, 200, 200)
+			info.RichText = true
+			info.LayoutOrder = 2
+			info.Parent = card
+			card.Parent = Folder
+			Reference[ent] = {mode = 'normal', card = card}
+		end
+	end
 
-    local Reference = {}
+	local function Removing(ent)
+		if Reference[ent] then
+			local ref = Reference[ent]
+			if ref.mode == 'drawing' then
+				pcall(function() ref.bg:Remove() end)
+				pcall(function() ref.title:Remove() end)
+				pcall(function() ref.info:Remove() end)
+			else
+				pcall(function() ref.card:Destroy() end)
+			end
+			Reference[ent] = nil
+		end
+	end
 
-    local function Added(ent)
-    	local Name = bedwars.ItemMeta[ent.Name] and bedwars.ItemMeta[ent.Name].displayName or ent.Name
-    	if WhitelistOnly.Enabled and not table.find(Whitelist.ListEnabled, Name:lower()) then
-    		return
-    	end
-
-    	local card = Instance.new('Frame')
-    	card.Name = ent.Name
-    	card.AnchorPoint = Vector2.new(0.5, 1)
-    	card.BackgroundColor3 = Color3.new()
-    	card.BackgroundTransparency = Background.Enabled and 0.35 or 1
-    	card.BorderSizePixel = 0
-    	card.AutomaticSize = Enum.AutomaticSize.XY
-    	card.Visible = false
-    	local cardCorner = Instance.new('UICorner')
-    	cardCorner.CornerRadius = UDim.new(0, 4)
-    	cardCorner.Parent = card
-    	local cardPadding = Instance.new('UIPadding')
-    	cardPadding.PaddingLeft = UDim.new(0, 6)
-    	cardPadding.PaddingRight = UDim.new(0, 6)
-    	cardPadding.PaddingTop = UDim.new(0, 3)
-    	cardPadding.PaddingBottom = UDim.new(0, 3)
-    	cardPadding.Parent = card
-    	local cardLayout = Instance.new('UIListLayout')
-    	cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    	cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    	cardLayout.Padding = UDim.new(0, 1)
-    	cardLayout.Parent = card
-
-    	local title = Instance.new('TextLabel')
-    	title.Name = 'Title'
-    	title.AutomaticSize = Enum.AutomaticSize.XY
-    	title.BackgroundTransparency = 1
-    	title.Font = Enum.Font.GothamBold
-    	title.TextSize = 9
-    	title.TextColor3 = Color3.new(1, 1, 1)
-    	title.Text = Name
-    	title.LayoutOrder = 1
-    	title.Parent = card
-
-    	local info = Instance.new('TextLabel')
-    	info.Name = 'Info'
-    	info.AutomaticSize = Enum.AutomaticSize.XY
-    	info.BackgroundTransparency = 1
-    	info.Font = Enum.Font.GothamBold
-    	info.TextSize = 8
-    	info.TextColor3 = Color3.fromRGB(200, 200, 200)
-    	info.RichText = true
-    	info.LayoutOrder = 2
-    	info.Parent = card
-
-    	card.Parent = Folder
-    	Reference[ent] = card
-    end
-
-    local function Removing(ent)
-    	if Reference[ent] then
-    		Reference[ent]:Destroy()
-    		Reference[ent] = nil
-    	end
-    end
-
-    ItemESP = vape.Categories.Render:CreateModule({
-    	Name = 'Item ESP',
-    	Function = function(call)
-    		if call then
-    			ItemESP:Clean(collectionService:GetInstanceAddedSignal('ItemDrop'):Connect(Added))
-    			ItemESP:Clean(collectionService:GetInstanceRemovedSignal('ItemDrop'):Connect(Removing))
-    			ItemESP:Clean(runService.PreRender:Connect(function()
-    				for ent, card in Reference do
-    					local headPos, headVis
-    					if not ent.Parent then continue end
-    					headPos, headVis = gameCamera:WorldToViewportPoint(ent.Position + Vector3.new(0, 1, 0))
-    					card.Visible = headVis
-    					if headVis then
-    						local amt = ent:GetAttribute('Amount')
-    						local dist = entitylib.isAlive and math.floor((entitylib.character.RootPart.Position - ent.Position).Magnitude) or 0
-    						card.Info.Text = (amt >= 2 and 'x' .. amt .. '  ' or '') .. '<font color="rgb(130,130,130)">' .. dist .. 'm</font>'
-    						card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
-    					end
-    				end
-    			end))
-
-    			for _, v in collectionService:GetTagged('ItemDrop') do
-    				Added(v)
-    			end
-    		else
-    			for i in Reference do
-    				Removing(i)
-    			end
-    		end
-    	end,
-    	Tooltip = 'Renders tags dropped items'
-    })
-    Background = ItemESP:CreateToggle({
-    	Name = 'Background',
-    	Function = function(callback)
-    		for _, card in Reference do
-    			card.BackgroundTransparency = callback and 0.35 or 1
-    		end
-    	end,
-    	Default = true
-    })
-    ItemESP:CreateToggle({
-    	Name = 'Group items',
-    	Tooltip = 'Group items into easier to read tags'
-    })
-    WhitelistOnly = ItemESP:CreateToggle({
-    	Name = 'Whitelist Only',
-    	Tooltip = 'Only renders whitelisted items',
-    	Function = function(call)
-    		if Whitelist.Object then
-    			Whitelist.Object.Visible = call
-
-    			if ItemESP.Enabled then
-    				ItemESP:Toggle()
-    				ItemESP:Toggle()
-    			end
-    		end
-    	end
-    })
-    Whitelist = ItemESP:CreateTextList({
-    	Name = 'Allowed items',
-    	Visible = false,
-    	Darker = true,
-    	Function = function()
-    		if ItemESP.Enabled then
-    			ItemESP:Toggle()
-    			ItemESP:Toggle()
-    		end
-    	end
-    })
+	ItemESP = vape.Categories.Render:CreateModule({
+		Name = 'Item ESP',
+		Function = function(call)
+			if call then
+				ItemESP:Clean(collectionService:GetInstanceAddedSignal('ItemDrop'):Connect(Added))
+				ItemESP:Clean(collectionService:GetInstanceRemovedSignal('ItemDrop'):Connect(Removing))
+				ItemESP:Clean(runService.PreRender:Connect(function()
+					for ent, obj in Reference do
+						local headPos, headVis
+						if ent.Parent then
+							headPos, headVis = gameCamera:WorldToViewportPoint(ent.Position + Vector3.new(0, 1, 0))
+						end
+						local amt = ent.Parent and (ent:GetAttribute('Amount') or 1) or 1
+						local dist = ent.Parent and entitylib.isAlive and math.floor((entitylib.character.RootPart.Position - ent.Position).Magnitude) or 0
+						local infoText = (amt >= 2 and 'x' .. amt .. '  ' or '') .. dist .. 'm'
+						if obj.mode == 'drawing' then
+							local vis = ent.Parent and headVis or false
+							obj.bg.Visible = vis
+							obj.title.Visible = vis
+							obj.info.Visible = vis
+							if vis then
+								obj.info.Text = infoText
+								local tw = math.max(obj.title.TextBounds.X, obj.info.TextBounds.X)
+								local th = obj.title.TextBounds.Y + obj.info.TextBounds.Y + 3
+								local w = tw + 12
+								local h = th + 6
+								obj.bg.Size = Vector2.new(w, h)
+								obj.bg.Position = Vector2.new(headPos.X - w / 2, headPos.Y - h)
+								obj.title.Position = obj.bg.Position + Vector2.new(6, 3)
+								obj.info.Position = obj.title.Position + Vector2.new(0, obj.title.TextBounds.Y + 2)
+							end
+						else
+							local vis = ent.Parent and headVis or false
+							obj.card.Visible = vis
+							if vis then
+								obj.card.Info.Text = (amt >= 2 and 'x' .. amt .. '  ' or '') .. '<font color="rgb(130,130,130)">' .. dist .. 'm</font>'
+								obj.card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
+							end
+						end
+					end
+				end))
+				for _, v in collectionService:GetTagged('ItemDrop') do
+					Added(v)
+				end
+			else
+				for ent in pairs(Reference) do
+					Removing(ent)
+				end
+			end
+		end,
+		Tooltip = 'Renders tags on dropped items'
+	})
+	Background = ItemESP:CreateToggle({
+		Name = 'Background',
+		Function = function(callback)
+			for _, obj in Reference do
+				if obj.mode == 'drawing' then
+					obj.bg.Transparency = callback and 0.65 or 1
+				else
+					obj.card.BackgroundTransparency = callback and 0.35 or 1
+				end
+			end
+		end,
+		Default = true
+	})
+	DrawingToggle = ItemESP:CreateToggle({
+		Name = 'Drawing',
+		Default = false,
+		Tooltip = 'Use Drawing overlay (hidden from Roblox recorder)',
+		Function = function()
+			if ItemESP.Enabled then ItemESP:Toggle(); ItemESP:Toggle() end
+		end
+	})
+	ItemESP:CreateToggle({
+		Name = 'Group items',
+		Tooltip = 'Group items into easier to read tags'
+	})
+	WhitelistOnly = ItemESP:CreateToggle({
+		Name = 'Whitelist Only',
+		Tooltip = 'Only renders whitelisted items',
+		Function = function(call)
+			if Whitelist.Object then
+				Whitelist.Object.Visible = call
+				if ItemESP.Enabled then
+					ItemESP:Toggle()
+					ItemESP:Toggle()
+				end
+			end
+		end
+	})
+	Whitelist = ItemESP:CreateTextList({
+		Name = 'Allowed items',
+		Visible = false,
+		Darker = true,
+		Function = function()
+			if ItemESP.Enabled then
+				ItemESP:Toggle()
+				ItemESP:Toggle()
+			end
+		end
+	})
 end)
 
 run(function()
@@ -8132,6 +8459,7 @@ end)
 run(function()
     local KitESP
     local Background
+    local DrawingToggle
     local Scale
     local Reference = {}
     local Folder = Instance.new('Folder')
@@ -8149,53 +8477,83 @@ run(function()
     }
 
     local function Added(v, icon)
-    	local card = Instance.new('Frame')
-    	card.Name = icon
-    	card.AnchorPoint = Vector2.new(0.5, 1)
-    	card.BackgroundColor3 = Color3.new()
-    	card.BackgroundTransparency = Background.Enabled and 0.35 or 1
-    	card.BorderSizePixel = 0
-    	card.AutomaticSize = Enum.AutomaticSize.XY
-    	card.Visible = false
-    	local cardCorner = Instance.new('UICorner')
-    	cardCorner.CornerRadius = UDim.new(0, 4)
-    	cardCorner.Parent = card
-    	local cardPadding = Instance.new('UIPadding')
-    	cardPadding.PaddingLeft = UDim.new(0, 6)
-    	cardPadding.PaddingRight = UDim.new(0, 6)
-    	cardPadding.PaddingTop = UDim.new(0, 3)
-    	cardPadding.PaddingBottom = UDim.new(0, 3)
-    	cardPadding.Parent = card
-    	local cardLayout = Instance.new('UIListLayout')
-    	cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    	cardLayout.FillDirection = Enum.FillDirection.Horizontal
-    	cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    	cardLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    	cardLayout.Padding = UDim.new(0, 4)
-    	cardLayout.Parent = card
-
     	local s = Scale and Scale.Value or 1
-    	local img = Instance.new('ImageLabel')
-    	img.Name = 'Icon'
-    	img.Size = UDim2.fromOffset(math.floor(12 * s), math.floor(12 * s))
-    	img.BackgroundTransparency = 1
-    	img.Image = bedwars.getIcon({ itemType = icon }, true)
-    	img.LayoutOrder = 1
-    	img.Parent = card
+    	if DrawingToggle and DrawingToggle.Enabled then
+    		local bg = Drawing.new('Square')
+    		bg.Filled = true
+    		bg.Color = Color3.new(0, 0, 0)
+    		bg.Transparency = Background.Enabled and 0.65 or 0
+    		bg.ZIndex = 1
+    		bg.Visible = false
+    		local label = Drawing.new('Text')
+    		label.Font = 2
+    		label.Size = math.floor(9 * s)
+    		label.Color = Color3.fromRGB(200, 200, 200)
+    		label.Outline = true
+    		label.OutlineColor = Color3.new(0, 0, 0)
+    		label.ZIndex = 2
+    		label.Visible = false
+    		label.Text = icon
+    		Reference[v] = {mode = 'drawing', bg = bg, label = label, icon = icon}
+    	else
+    		local card = Instance.new('Frame')
+    		card.AnchorPoint = Vector2.new(0.5, 1)
+    		card.BackgroundColor3 = Color3.new()
+    		card.BackgroundTransparency = Background.Enabled and 0.35 or 1
+    		card.BorderSizePixel = 0
+    		card.AutomaticSize = Enum.AutomaticSize.XY
+    		card.Visible = false
+    		local cardCorner = Instance.new('UICorner')
+    		cardCorner.CornerRadius = UDim.new(0, 4)
+    		cardCorner.Parent = card
+    		local cardPadding = Instance.new('UIPadding')
+    		cardPadding.PaddingLeft = UDim.new(0, 6)
+    		cardPadding.PaddingRight = UDim.new(0, 6)
+    		cardPadding.PaddingTop = UDim.new(0, 3)
+    		cardPadding.PaddingBottom = UDim.new(0, 3)
+    		cardPadding.Parent = card
+    		local cardLayout = Instance.new('UIListLayout')
+    		cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    		cardLayout.FillDirection = Enum.FillDirection.Horizontal
+    		cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    		cardLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    		cardLayout.Padding = UDim.new(0, 4)
+    		cardLayout.Parent = card
+    		local iconLabel = Instance.new('TextLabel')
+    		iconLabel.Name = 'Icon'
+    		iconLabel.AutomaticSize = Enum.AutomaticSize.XY
+    		iconLabel.BackgroundTransparency = 1
+    		iconLabel.Font = Enum.Font.GothamBold
+    		iconLabel.TextSize = math.floor(9 * s)
+    		iconLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
+    		iconLabel.Text = icon
+    		iconLabel.LayoutOrder = 1
+    		iconLabel.Parent = card
+    		local infoLbl = Instance.new('TextLabel')
+    		infoLbl.Name = 'Info'
+    		infoLbl.AutomaticSize = Enum.AutomaticSize.XY
+    		infoLbl.BackgroundTransparency = 1
+    		infoLbl.Font = Enum.Font.GothamBold
+    		infoLbl.TextSize = math.floor(9 * s)
+    		infoLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    		infoLbl.RichText = true
+    		infoLbl.LayoutOrder = 2
+    		infoLbl.Parent = card
+    		card.Parent = Folder
+    		Reference[v] = {mode = 'normal', card = card, icon = icon}
+    	end
+    end
 
-    	local info = Instance.new('TextLabel')
-    	info.Name = 'Info'
-    	info.AutomaticSize = Enum.AutomaticSize.XY
-    	info.BackgroundTransparency = 1
-    	info.Font = Enum.Font.GothamBold
-    	info.TextSize = math.floor(9 * s)
-    	info.TextColor3 = Color3.fromRGB(200, 200, 200)
-    	info.RichText = true
-    	info.LayoutOrder = 2
-    	info.Parent = card
-
-    	card.Parent = Folder
-    	Reference[v] = card
+    local function Removing(v)
+    	local ref = Reference[v]
+    	if not ref then return end
+    	Reference[v] = nil
+    	if ref.mode == 'drawing' then
+    		pcall(function() ref.bg:Remove() end)
+    		pcall(function() ref.label:Remove() end)
+    	else
+    		pcall(function() ref.card:Destroy() end)
+    	end
     end
 
     local function addKit(tag, icon)
@@ -8203,10 +8561,7 @@ run(function()
     		Added(v.PrimaryPart, icon)
     	end))
     	KitESP:Clean(collectionService:GetInstanceRemovedSignal(tag):Connect(function(v)
-    		if Reference[v.PrimaryPart] then
-    			Reference[v.PrimaryPart]:Destroy()
-    			Reference[v.PrimaryPart] = nil
-    		end
+    		Removing(v.PrimaryPart)
     	end))
     	for _, v in collectionService:GetTagged(tag) do
     		Added(v.PrimaryPart, icon)
@@ -8225,31 +8580,59 @@ run(function()
     				addKit(kit[1], kit[2])
     			end
     			KitESP:Clean(runService.PreRender:Connect(function()
-    				for obj, card in Reference do
+    				for obj, ref in Reference do
     					local headPos, headVis = gameCamera:WorldToViewportPoint(obj.Position + Vector3.new(0, 2, 0))
-    					card.Visible = headVis
-    					if headVis then
-    						local dist = entitylib.isAlive and math.floor((entitylib.character.RootPart.Position - obj.Position).Magnitude) or 0
-    						card.Info.Text = '<font color="rgb(130,130,130)">' .. dist .. 'm</font>'
-    						card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
+    					local dist = entitylib.isAlive and math.floor((entitylib.character.RootPart.Position - obj.Position).Magnitude) or 0
+    					local infoText = ref.icon .. ' â¢ ' .. dist .. 'm'
+    					if ref.mode == 'drawing' then
+    						ref.bg.Visible = headVis
+    						ref.label.Visible = headVis
+    						if headVis then
+    							ref.label.Text = infoText
+    							local tw = ref.label.TextBounds.X
+    							local th = ref.label.TextBounds.Y
+    							local w = tw + 12; local h = th + 6
+    							ref.bg.Size = Vector2.new(w, h)
+    							ref.bg.Position = Vector2.new(headPos.X - w / 2, headPos.Y - h)
+    							ref.label.Position = ref.bg.Position + Vector2.new(6, 3)
+    						end
+    					else
+    						ref.card.Visible = headVis
+    						if headVis then
+    							ref.card.Info.Text = '<font color="rgb(130,130,130)">' .. dist .. 'm</font>'
+    							ref.card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
+    						end
     					end
     				end
     			end))
     		else
+    			for v in pairs(Reference) do Removing(v) end
     			Folder:ClearAllChildren()
-    			table.clear(Reference)
     		end
+    	end,
     	end,
     	Tooltip = 'ESP for certain kit related objects'
     })
     Background = KitESP:CreateToggle({
     	Name = 'Background',
     	Function = function(callback)
-    		for _, card in Reference do
-    			card.BackgroundTransparency = callback and 0.35 or 1
+    		for _, ref in Reference do
+    			if ref.mode == 'drawing' then
+    				ref.bg.Transparency = callback and 0.65 or 1
+    			else
+    				ref.card.BackgroundTransparency = callback and 0.35 or 1
+    			end
     		end
     	end,
     	Default = true
+    })
+    DrawingToggle = KitESP:CreateToggle({
+    	Name = 'Drawing',
+    	Default = false,
+    	Tooltip = 'Use Drawing API (invisible to recorder)',
+    	Function = function()
+    		if KitESP.Enabled then KitESP:Toggle(); KitESP:Toggle() end
+    	end
     })
     Scale = KitESP:CreateSlider({
     	Name = 'Scale',
@@ -8258,14 +8641,12 @@ run(function()
     	Max = 2,
     	Decimal = 10,
     	Function = function(val)
-    		for _, card in Reference do
-    			local icon = card:FindFirstChild('Icon')
-    			if icon then
-    				icon.Size = UDim2.fromOffset(math.floor(12 * val), math.floor(12 * val))
-    			end
-    			local info = card:FindFirstChild('Info')
-    			if info then
-    				info.TextSize = math.floor(9 * val)
+    		for _, ref in Reference do
+    			if ref.mode == 'drawing' then
+    				ref.label.Size = math.floor(9 * val)
+    			else
+    				ref.card.Icon.TextSize = math.floor(9 * val)
+    				ref.card.Info.TextSize = math.floor(9 * val)
     			end
     		end
     	end
@@ -8293,6 +8674,10 @@ run(function()
     local Folder = Instance.new('Folder')
     Folder.Parent = vape.gui
     local methodused
+    local function formatRankDiv(div)
+    	if not div then return nil end
+    	return div:gsub('_', ' '):gsub('(%a+)', function(w) return w:sub(1,1):upper()..w:sub(2) end)
+    end
 
     local Added = {
     	Normal = function(ent)
@@ -8380,6 +8765,18 @@ run(function()
     				Icon.Parent = nametag
     			end
     		end)
+    		task.spawn(function()
+    			if ShowKit and ShowKit.Enabled and ent.Player then
+    				local kit = ent.Player:GetAttribute('PlayingAsKit')
+    				local Icon = Instance.new('ImageLabel')
+    				Icon.Name = 'KitIcon'
+    				Icon.Size = UDim2.fromOffset(20, 20)
+    				Icon.Position = UDim2.fromOffset(size.X + 12, -2)
+    				Icon.BackgroundTransparency = 1
+    				Icon.Image = kit and bedwars.BedwarsKitMeta[kit] and bedwars.BedwarsKitMeta[kit].renderImage or ''
+    				Icon.Parent = nametag
+    			end
+    		end)
     		Reference[ent] = nametag
     	end,
     	Drawing = function(ent)
@@ -8418,6 +8815,33 @@ run(function()
     		nametag.Text.Text = Strings[ent]
     		nametag.Text.Color = entitylib.getEntityColor(ent) or Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
     		nametag.BG.Size = Vector2.new(nametag.Text.TextBounds.X + 8, nametag.Text.TextBounds.Y + 7)
+    		if Rank.Enabled and ent.Player then
+    			local rankLabel = Drawing.new('Text')
+    			rankLabel.Size = 13 * Scale.Value
+    			rankLabel.Font = 0
+    			rankLabel.Color = Color3.fromRGB(255, 215, 0)
+    			rankLabel.Visible = false
+    			rankLabel.ZIndex = 2
+    			rankLabel.Text = ''
+    			nametag.Rank = rankLabel
+    			task.spawn(function()
+    				local div = store.rank[ent.Player]:async()
+    				local txt = formatRankDiv(div)
+    				if txt and nametag.Rank then
+    					nametag.Rank.Text = txt
+    				end
+    			end)
+    		end
+    		if Enchant.Enabled and ent.Player then
+    			local enchantLabel = Drawing.new('Text')
+    			enchantLabel.Size = 13 * Scale.Value
+    			enchantLabel.Font = 0
+    			enchantLabel.Color = Color3.fromRGB(100, 200, 255)
+    			enchantLabel.Visible = false
+    			enchantLabel.ZIndex = 2
+    			enchantLabel.Text = store.enchantNames[ent.Player]:async() or ''
+    			nametag.Enchant = enchantLabel
+    		end
     		Reference[ent] = nametag
     	end,
     }
@@ -8490,6 +8914,11 @@ run(function()
     				nametag.EnchantIcon.Image = store.enchants[ent.Player]:async() or ''
     			end
 
+    			if ShowKit and ShowKit.Enabled and ent.Player and nametag:FindFirstChild('KitIcon') then
+    				local kit = ent.Player:GetAttribute('PlayingAsKit')
+    				nametag.KitIcon.Image = kit and bedwars.BedwarsKitMeta[kit] and bedwars.BedwarsKitMeta[kit].renderImage or ''
+    			end
+
     			local size = getfontsize(removeTags(Strings[ent]), nametag.TextSize, nametag.FontFace, Vector2.new(100000, 100000))
     			nametag.Size = UDim2.fromOffset(size.X + 8, size.Y + 7)
     			nametag.Text = Strings[ent]
@@ -8519,6 +8948,9 @@ run(function()
 
     			nametag.BG.Size = Vector2.new(nametag.Text.TextBounds.X + 8, nametag.Text.TextBounds.Y + 7)
     			nametag.Text.Color = entitylib.getEntityColor(ent) or Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
+    			if Enchant.Enabled and nametag.Enchant and ent.Player then
+    				nametag.Enchant.Text = store.enchantNames[ent.Player]:async() or ''
+    			end
     		end
     	end,
     }
@@ -8575,6 +9007,9 @@ run(function()
     					)
     					nametag.Size = UDim2.fromOffset(ize.X + 8, ize.Y + 7)
     					Sizes[ent] = mag
+    					if nametag:FindFirstChild('KitIcon') then
+    						nametag.KitIcon.Position = UDim2.fromOffset(ize.X + 12, -2)
+    					end
     				end
     			end
     			nametag.Position = UDim2.fromOffset(headPos.X, headPos.Y)
@@ -8595,6 +9030,8 @@ run(function()
     				if distance < DistanceLimit.ValueMin or distance > DistanceLimit.ValueMax then
     					nametag.Text.Visible = false
     					nametag.BG.Visible = false
+    					if nametag.Rank then nametag.Rank.Visible = false end
+    					if nametag.Enchant then nametag.Enchant.Visible = false end
     					continue
     				end
     			end
@@ -8602,6 +9039,8 @@ run(function()
     			headPos, headVis = gameCamera:WorldToViewportPoint(ent.RootPart.Position + Vector3.new(0, ent.HipHeight + 1, 0))
     			nametag.Text.Visible = headVis
     			nametag.BG.Visible = headVis
+    			if nametag.Rank then nametag.Rank.Visible = headVis and nametag.Rank.Text ~= '' end
+    			if nametag.Enchant then nametag.Enchant.Visible = headVis and nametag.Enchant.Text ~= '' end
     			if not headVis then
     				continue
     			end
@@ -8616,6 +9055,12 @@ run(function()
     			end
     			nametag.BG.Position = Vector2.new(headPos.X - (nametag.BG.Size.X / 2), headPos.Y - nametag.BG.Size.Y)
     			nametag.Text.Position = nametag.BG.Position + Vector2.new(4, 3)
+    			if nametag.Rank and nametag.Rank.Visible then
+    				nametag.Rank.Position = Vector2.new(nametag.BG.Position.X + nametag.BG.Size.X + 4, nametag.BG.Position.Y)
+    			end
+    			if nametag.Enchant and nametag.Enchant.Visible then
+    				nametag.Enchant.Position = Vector2.new(nametag.BG.Position.X - nametag.Enchant.TextBounds.X - 4, nametag.BG.Position.Y)
+    			end
     		end
     	end,
     }
@@ -8777,6 +9222,7 @@ run(function()
     })
     DrawingToggle = NameTags:CreateToggle({
     	Name = 'Drawing',
+    	Default = true,
     	Function = function()
     		if NameTags.Enabled then
     			NameTags:Toggle()
@@ -8798,6 +9244,16 @@ run(function()
     	DefaultMax = 64,
     	Darker = true,
     	Visible = false,
+    })
+    ShowKit = NameTags:CreateToggle({
+    	Name = 'Show Kit',
+    	Default = false,
+    	Function = function()
+    		if NameTags.Enabled then
+    			NameTags:Toggle()
+    			NameTags:Toggle()
+    		end
+    	end,
     })
 end)
 
@@ -9763,243 +10219,233 @@ run(function()
 end)
 
 run(function()
-    local StorageESP
-    local List
-    local Background
-    local Reference = {}
-    local Enabled = {}
-    local Connections = {}
-    local Folder = Instance.new('Folder')
-    Folder.Parent = vape.gui
+	local StorageESP
+	local List
+	local Background
+	local DrawingToggle
+	local Reference = {}
+	local Enabled = {}
+	local Connections = {}
+	local Folder = Instance.new('Folder')
+	Folder.Parent = vape.gui
 
-    local function nearStorageItem(item)
-    	for _, v in List.ListEnabled do
-    		if item:find(v) then
-    			return v
-    		end
-    	end
-    	return nil
-    end
+	local function refreshAdornee(obj)
+		local ref = Reference[obj]
+		if not ref then return end
+		local chestRef = obj:FindFirstChild('ChestFolderValue')
+		local chest = chestRef and chestRef.Value or nil
+		if not chest then
+			Enabled[obj] = false
+			return
+		end
+		Enabled[obj] = false
+		local ironCount, diamondCount, emeraldCount = 0, 0, 0
+		for _, item in chest:GetChildren() do
+			local n = item.Name:lower()
+			if n:find('iron') then ironCount = ironCount + 1
+			elseif n:find('diamond') then diamondCount = diamondCount + 1
+			elseif n:find('emerald') then emeraldCount = emeraldCount + 1
+			end
+		end
+		if ironCount > 0 or diamondCount > 0 or emeraldCount > 0 then
+			Enabled[obj] = true
+		end
+		local infoText = string.format('Fe:%d Di:%d Em:%d', ironCount, diamondCount, emeraldCount)
+		if ref.mode == 'drawing' then
+			ref.info.Text = infoText
+		else
+			ref.card.Info.Text = infoText
+		end
+	end
 
-    local function refreshAdornee(obj, card)
-    	local chestRef = obj:FindFirstChild('ChestFolderValue')
-    	local chest = chestRef and chestRef.Value or nil
-    	if not chest then
-    		Enabled[obj] = false
-    		return
-    	end
+	local function Removing(v)
+		if Reference[v] then
+			local ref = Reference[v]
+			if ref.mode == 'drawing' then
+				pcall(function() ref.bg:Remove() end)
+				pcall(function() ref.title:Remove() end)
+				pcall(function() ref.info:Remove() end)
+			else
+				pcall(function() ref.card:Destroy() end)
+			end
+			Reference[v] = nil
+			Enabled[v] = nil
+		end
+		if Connections[v] then
+			for _, c in Connections[v] do c:Disconnect() end
+			Connections[v] = nil
+		end
+	end
 
-    	local items = card:FindFirstChild('Items')
-    	if items then
-    		for _, child in items:GetChildren() do
-    			if child:IsA('Frame') and child.Name == 'ItemSlot' then
-    				child:Destroy()
-    			end
-    		end
-    	end
+	local function Clear()
+		for v in table.clone(Reference) do
+			Removing(v)
+		end
+	end
 
-    	Enabled[obj] = false
-    	local slotCounts = {}
-    	local order = {}
-    	local ironCount, diamondCount, emeraldCount = 0, 0, 0
-    	for _, item in chest:GetChildren() do
-    		local n = item.Name:lower()
-    		if n:find('iron') then ironCount = ironCount + 1
-    		elseif n:find('diamond') then diamondCount = diamondCount + 1
-    		elseif n:find('emerald') then emeraldCount = emeraldCount + 1 end
-    		if table.find(List.ListEnabled, item.Name) or nearStorageItem(item.Name) then
-    			if not slotCounts[item.Name] then
-    				slotCounts[item.Name] = 0
-    				table.insert(order, item.Name)
-    			end
-    			slotCounts[item.Name] = slotCounts[item.Name] + 1
-    		end
-    	end
-    	if ironCount > 0 or diamondCount > 0 or emeraldCount > 0 then
-    		Enabled[obj] = true
-    	end
-    	for _, itemName in order do
-    		Enabled[obj] = true
-    		local slot = Instance.new('Frame')
-    		slot.Name = 'ItemSlot'
-    		slot.Size = UDim2.fromOffset(16, 16)
-    		slot.BackgroundTransparency = 1
-    		slot.Parent = items
-    		local blockimage = Instance.new('ImageLabel')
-    		blockimage.Size = UDim2.fromOffset(14, 14)
-    		blockimage.Position = UDim2.fromOffset(1, 0)
-    		blockimage.BackgroundTransparency = 1
-    		blockimage.Image = bedwars.getIcon({ itemType = itemName }, true)
-    		blockimage.Parent = slot
-    		if slotCounts[itemName] > 1 then
-    			local countLabel = Instance.new('TextLabel')
-    			countLabel.Size = UDim2.fromOffset(14, 8)
-    			countLabel.Position = UDim2.new(1, -1, 1, -1)
-    			countLabel.AnchorPoint = Vector2.new(1, 1)
-    			countLabel.BackgroundTransparency = 1
-    			countLabel.Text = 'x' .. slotCounts[itemName]
-    			countLabel.TextColor3 = Color3.new(1, 1, 1)
-    			countLabel.TextStrokeTransparency = 0.3
-    			countLabel.TextStrokeColor3 = Color3.new()
-    			countLabel.TextSize = 7
-    			countLabel.Font = Enum.Font.GothamBold
-    			countLabel.TextXAlignment = Enum.TextXAlignment.Right
-    			countLabel.Parent = slot
-    		end
-    	end
-    end
+	local function Added(v)
+		local chestRef = v:WaitForChild('ChestFolderValue', 3)
+		if not (chestRef and StorageESP.Enabled and v:HasTag('chest')) then return end
+		if Reference[v] then Removing(v) end
+		local chest = chestRef.Value
+		if not chest then return end
 
-    local function Removing(v)
-    	local card = Reference[v]
-    	if card then
-    		card:Destroy()
-    		Reference[v] = nil
-    		Enabled[v] = nil
-    	end
+		if DrawingToggle and DrawingToggle.Enabled then
+			local bg = Drawing.new('Square')
+			bg.Filled = true
+			bg.Color = Color3.new(0, 0, 0)
+			bg.Transparency = Background and Background.Enabled and 0.65 or 1
+			bg.ZIndex = 1
+			bg.Visible = false
+			local title = Drawing.new('Text')
+			title.Font = 2
+			title.Size = 9
+			title.Color = Color3.fromRGB(180, 140, 255)
+			title.Outline = true
+			title.OutlineColor = Color3.new(0, 0, 0)
+			title.Text = 'Storage'
+			title.ZIndex = 2
+			title.Visible = false
+			local info = Drawing.new('Text')
+			info.Font = 2
+			info.Size = 8
+			info.Color = Color3.fromRGB(220, 220, 220)
+			info.Outline = true
+			info.OutlineColor = Color3.new(0, 0, 0)
+			info.Text = ''
+			info.ZIndex = 2
+			info.Visible = false
+			Reference[v] = {mode = 'drawing', bg = bg, title = title, info = info}
+		else
+			local card = Instance.new('Frame')
+			card.AnchorPoint = Vector2.new(0.5, 1)
+			card.BackgroundColor3 = Color3.new()
+			card.BackgroundTransparency = Background and Background.Enabled and 0.35 or 1
+			card.BorderSizePixel = 0
+			card.AutomaticSize = Enum.AutomaticSize.XY
+			card.Visible = false
+			local cardCorner = Instance.new('UICorner')
+			cardCorner.CornerRadius = UDim.new(0, 4)
+			cardCorner.Parent = card
+			local cardPadding = Instance.new('UIPadding')
+			cardPadding.PaddingLeft = UDim.new(0, 6)
+			cardPadding.PaddingRight = UDim.new(0, 6)
+			cardPadding.PaddingTop = UDim.new(0, 3)
+			cardPadding.PaddingBottom = UDim.new(0, 3)
+			cardPadding.Parent = card
+			local cardLayout = Instance.new('UIListLayout')
+			cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+			cardLayout.Padding = UDim.new(0, 1)
+			cardLayout.Parent = card
+			local title = Instance.new('TextLabel')
+			title.Name = 'Title'
+			title.AutomaticSize = Enum.AutomaticSize.XY
+			title.BackgroundTransparency = 1
+			title.Font = Enum.Font.GothamBold
+			title.TextSize = 9
+			title.TextColor3 = Color3.fromRGB(180, 140, 255)
+			title.Text = 'Storage'
+			title.LayoutOrder = 1
+			title.Parent = card
+			local info = Instance.new('TextLabel')
+			info.Name = 'Info'
+			info.AutomaticSize = Enum.AutomaticSize.XY
+			info.BackgroundTransparency = 1
+			info.Font = Enum.Font.GothamBold
+			info.TextSize = 8
+			info.TextColor3 = Color3.fromRGB(220, 220, 220)
+			info.RichText = true
+			info.LayoutOrder = 2
+			info.Parent = card
+			card.Parent = Folder
+			Reference[v] = {mode = 'normal', card = card}
+		end
+		Enabled[v] = false
+		Connections[v] = {
+			chest.ChildAdded:Connect(function() refreshAdornee(v) end),
+			chest.ChildRemoved:Connect(function() refreshAdornee(v) end),
+		}
+		task.spawn(refreshAdornee, v)
+	end
 
-    	local connections = Connections[v]
-    	if connections then
-    		for _, connection in connections do
-    			connection:Disconnect()
-    		end
-    		table.clear(connections)
-    		Connections[v] = nil
-    	end
-    end
-
-    local function Clear()
-    	local references = table.clone(Reference)
-    	for v in references do
-    		Removing(v)
-    	end
-    	table.clear(references)
-    	Folder:ClearAllChildren()
-    end
-
-    local function Added(v)
-    	local chestRef = v:WaitForChild('ChestFolderValue', 3)
-    	if not (chestRef and StorageESP.Enabled and v:HasTag('chest')) then
-    		return
-    	end
-    	if Reference[v] then
-    		Removing(v)
-    	end
-    	local chest = chestRef.Value
-    	if not chest then
-    		return
-    	end
-
-    	local card = Instance.new('Frame')
-    	card.AnchorPoint = Vector2.new(0.5, 1)
-    	card.BackgroundColor3 = Color3.new()
-    	card.BackgroundTransparency = Background.Enabled and 0.35 or 1
-    	card.BorderSizePixel = 0
-    	card.AutomaticSize = Enum.AutomaticSize.XY
-    	card.Visible = false
-    	local cardCorner = Instance.new('UICorner')
-    	cardCorner.CornerRadius = UDim.new(0, 4)
-    	cardCorner.Parent = card
-    	local cardPadding = Instance.new('UIPadding')
-    	cardPadding.PaddingLeft = UDim.new(0, 6)
-    	cardPadding.PaddingRight = UDim.new(0, 6)
-    	cardPadding.PaddingTop = UDim.new(0, 3)
-    	cardPadding.PaddingBottom = UDim.new(0, 3)
-    	cardPadding.Parent = card
-    	local cardLayout = Instance.new('UIListLayout')
-    	cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    	cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    	cardLayout.Padding = UDim.new(0, 1)
-    	cardLayout.Parent = card
-
-    	local title = Instance.new('TextLabel')
-    	title.Name = 'Title'
-    	title.AutomaticSize = Enum.AutomaticSize.XY
-    	title.BackgroundTransparency = 1
-    	title.Font = Enum.Font.GothamBold
-    	title.TextSize = 9
-    	title.TextColor3 = Color3.fromRGB(180, 140, 255)
-    	title.Text = 'Storage'
-    	title.LayoutOrder = 1
-    	title.Parent = card
-
-    	local items = Instance.new('Frame')
-    	items.Name = 'Items'
-    	items.AutomaticSize = Enum.AutomaticSize.XY
-    	items.BackgroundTransparency = 1
-    	items.LayoutOrder = 2
-    	local itemsLayout = Instance.new('UIListLayout')
-    	itemsLayout.FillDirection = Enum.FillDirection.Horizontal
-    	itemsLayout.Padding = UDim.new(0, 2)
-    	itemsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    	itemsLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    	itemsLayout.Parent = items
-    	items.Parent = card
-
-    	card.Parent = Folder
-    	Reference[v] = card
-    	Enabled[v] = false
-
-    	Connections[v] = {
-    		chest.ChildAdded:Connect(function()
-    			refreshAdornee(v, card)
-    		end),
-    		chest.ChildRemoved:Connect(function()
-    			refreshAdornee(v, card)
-    		end),
-    	}
-    	task.spawn(refreshAdornee, v, card)
-    end
-
-    StorageESP = vape.Categories.Render:CreateModule({
-    	Name = 'Storage ESP',
-    	Function = function(callback)
-    		if callback then
-    			StorageESP:Clean(collectionService:GetInstanceAddedSignal('chest'):Connect(Added))
-    			StorageESP:Clean(collectionService:GetInstanceRemovedSignal('chest'):Connect(Removing))
-    			StorageESP:Clean(Clear)
-    			StorageESP:Clean(runService.PreRender:Connect(function()
-    				for obj, card in Reference do
-    					local part, pos, headPos, headVis
-    					if not Enabled[obj] then
-    						card.Visible = false
-    						continue
-    					end
-    					part = obj:IsA('Model') and (obj.PrimaryPart or obj:FindFirstChildWhichIsA('BasePart')) or obj
-    					if not part then card.Visible = false continue end
-    					pos = part.Position
-    					headPos, headVis = gameCamera:WorldToViewportPoint(pos + Vector3.new(0, 3, 0))
-    					card.Visible = headVis
-    					if headVis then
-    						card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
-    					end
-    				end
-    			end))
-    			for _, v in collectionService:GetTagged('chest') do
-    				task.spawn(Added, v)
-    			end
-    		else
-    			Clear()
-    		end
-    	end,
-    	Tooltip = 'Displays items in chests'
-    })
-    List = StorageESP:CreateTextList({
-    	Name = 'Item',
-    	Function = function()
-    		for obj, card in Reference do
-    			task.spawn(refreshAdornee, obj, card)
-    		end
-    	end,
-    })
-    Background = StorageESP:CreateToggle({
-    	Name = 'Background',
-    	Function = function(callback)
-    		for _, card in Reference do
-    			card.BackgroundTransparency = callback and 0.35 or 1
-    		end
-    	end,
-    	Default = true
-    })
+	StorageESP = vape.Categories.Render:CreateModule({
+		Name = 'Storage ESP',
+		Function = function(callback)
+			if callback then
+				StorageESP:Clean(collectionService:GetInstanceAddedSignal('chest'):Connect(Added))
+				StorageESP:Clean(collectionService:GetInstanceRemovedSignal('chest'):Connect(Removing))
+				StorageESP:Clean(Clear)
+				StorageESP:Clean(runService.PreRender:Connect(function()
+					for obj, ref in Reference do
+						local visible = Enabled[obj]
+						local part = obj:IsA('Model') and (obj.PrimaryPart or obj:FindFirstChildWhichIsA('BasePart')) or obj
+						local headPos, headVis = if part then gameCamera:WorldToViewportPoint(part.Position + Vector3.new(0, 3, 0)) else Vector3.new(), false
+						local show = visible and headVis
+						if ref.mode == 'drawing' then
+							ref.bg.Visible = show
+							ref.title.Visible = show
+							ref.info.Visible = show
+							if show then
+								local tw = math.max(ref.title.TextBounds.X, ref.info.TextBounds.X)
+								local th = ref.title.TextBounds.Y + ref.info.TextBounds.Y + 3
+								local w = tw + 12
+								local h = th + 6
+								ref.bg.Size = Vector2.new(w, h)
+								ref.bg.Position = Vector2.new(headPos.X - w / 2, headPos.Y - h)
+								ref.title.Position = ref.bg.Position + Vector2.new(6, 3)
+								ref.info.Position = ref.title.Position + Vector2.new(0, ref.title.TextBounds.Y + 1)
+							end
+						else
+							ref.card.Visible = show
+							if show then
+								ref.card.Position = UDim2.fromOffset(headPos.X, headPos.Y)
+							end
+						end
+					end
+				end))
+				for _, v in collectionService:GetTagged('chest') do
+					task.spawn(Added, v)
+				end
+			else
+				Clear()
+			end
+		end,
+		Tooltip = 'Displays items in chests'
+	})
+	List = StorageESP:CreateTextList({
+		Name = 'Item',
+		Function = function()
+			for obj in Reference do
+				task.spawn(refreshAdornee, obj)
+			end
+		end,
+	})
+	Background = StorageESP:CreateToggle({
+		Name = 'Background',
+		Function = function(callback)
+			for _, ref in Reference do
+				if ref.mode == 'drawing' then
+					ref.bg.Transparency = callback and 0.65 or 1
+				else
+					ref.card.BackgroundTransparency = callback and 0.35 or 1
+				end
+			end
+		end,
+		Default = true
+	})
+	DrawingToggle = StorageESP:CreateToggle({
+		Name = 'Drawing',
+		Default = false,
+		Tooltip = 'Use Drawing API (invisible to recorder)',
+		Function = function()
+			if StorageESP.Enabled then StorageESP:Toggle(); StorageESP:Toggle() end
+		end
+	})
+	ItemCount = StorageESP:CreateToggle({
+		Name = 'Item Count',
+		Default = true,
+	})
 end)
 
 run(function()
@@ -10127,88 +10573,159 @@ run(function()
 end)
 
 run(function()
-    local PotESP
+	local PotESP
+	local AlertSpawn
+	local DrawingToggle
+	local Reference = {}
+	local Folder = Instance.new('Folder')
+	Folder.Parent = vape.gui
 
-    local Reference = {}
-    local Folder = Instance.new('Folder')
-    Folder.Parent = vape.gui
+	local function getPos(v)
+		if v:IsA('Model') then
+			local p = v.PrimaryPart or v:FindFirstChildWhichIsA('BasePart')
+			return p and p.Position
+		end
+		return v:IsA('BasePart') and v.Position
+	end
 
-    local function getPos(v)
-        if v:IsA('Model') then
-            local p = v.PrimaryPart or v:FindFirstChildWhichIsA('BasePart')
-            return p and p.Position
-        end
-        return v:IsA('BasePart') and v.Position
-    end
+	local function Added(v)
+		if Reference[v] then return end
+		if DrawingToggle and DrawingToggle.Enabled then
+			local bg = Drawing.new('Square')
+			bg.Filled = true
+			bg.Color = Color3.new(0, 0, 0)
+			bg.Transparency = 0.6
+			bg.ZIndex = 1
+			bg.Visible = false
+			local txt = Drawing.new('Text')
+			txt.Size = 12
+			txt.Font = 2
+			txt.Color = Color3.fromRGB(255, 210, 100)
+			txt.Outline = true
+			txt.OutlineColor = Color3.new(0, 0, 0)
+			txt.ZIndex = 2
+			txt.Visible = false
+			Reference[v] = {mode = 'drawing', bg = bg, txt = txt}
+		else
+			local card = Instance.new('Frame')
+			card.AnchorPoint = Vector2.new(0.5, 1)
+			card.BackgroundColor3 = Color3.new()
+			card.BackgroundTransparency = 0.35
+			card.BorderSizePixel = 0
+			card.AutomaticSize = Enum.AutomaticSize.XY
+			card.Visible = false
+			local cardCorner = Instance.new('UICorner')
+			cardCorner.CornerRadius = UDim.new(0, 4)
+			cardCorner.Parent = card
+			local cardPadding = Instance.new('UIPadding')
+			cardPadding.PaddingLeft = UDim.new(0, 6)
+			cardPadding.PaddingRight = UDim.new(0, 6)
+			cardPadding.PaddingTop = UDim.new(0, 3)
+			cardPadding.PaddingBottom = UDim.new(0, 3)
+			cardPadding.Parent = card
+			local info = Instance.new('TextLabel')
+			info.Name = 'Info'
+			info.AutomaticSize = Enum.AutomaticSize.XY
+			info.BackgroundTransparency = 1
+			info.Font = Enum.Font.GothamBold
+			info.TextSize = 12
+			info.TextColor3 = Color3.fromRGB(255, 210, 100)
+			info.RichText = true
+			info.Parent = card
+			card.Parent = Folder
+			Reference[v] = {mode = 'normal', card = card}
+		end
+	end
 
-    local function Added(v)
-        if Reference[v] then return end
-        local label = Instance.new('TextLabel')
-        label.Size = UDim2.fromOffset(60, 18)
-        label.AnchorPoint = Vector2.new(0.5, 1)
-        label.BackgroundColor3 = Color3.new(0, 0, 0)
-        label.BackgroundTransparency = 0.4
-        label.BorderSizePixel = 0
-        label.TextSize = 12
-        label.Font = Enum.Font.GothamBold
-        label.TextColor3 = Color3.fromRGB(255, 210, 100)
-        label.Text = 'Pot'
-        label.Visible = false
-        label.RichText = true
-        local corner = Instance.new('UICorner')
-        corner.CornerRadius = UDim.new(0, 4)
-        corner.Parent = label
-        label.Parent = Folder
-        Reference[v] = label
-    end
+	local function Removing(v)
+		if Reference[v] then
+			local ref = Reference[v]
+			if ref.mode == 'drawing' then
+				pcall(function() ref.bg:Remove() end)
+				pcall(function() ref.txt:Remove() end)
+			else
+				pcall(function() ref.card:Destroy() end)
+			end
+			Reference[v] = nil
+		end
+	end
 
-    local function Removing(v)
-        if Reference[v] then
-            Reference[v]:Destroy()
-            Reference[v] = nil
-        end
-    end
-
-    PotESP = vape.Categories.Render:CreateModule({
-        Name = 'Pot ESP',
-        Function = function(callback)
-            if callback then
-                PotESP:Clean(workspace.DescendantAdded:Connect(function(v)
-                    if v.Name == 'desert_pot' then
-                        task.spawn(Added, v)
-                    end
-                end))
-                PotESP:Clean(workspace.DescendantRemoving:Connect(Removing))
-                PotESP:Clean(runService.PreRender:Connect(function()
-                    local char = lplr.Character
-                    local root = char and char:FindFirstChild('HumanoidRootPart')
-                    for pot, label in Reference do
-                        local screen, vis
-                        local pos = getPos(pot)
-                        if not pos then label.Visible = false continue end
-                        screen, vis = gameCamera:WorldToViewportPoint(pos + Vector3.new(0, 2, 0))
-                        label.Visible = vis
-                        if vis then
-                            local dist = root and math.round((root.Position - pos).Magnitude) or 0
-                            label.Text = string.format('Pot <font color="#aaaaaa">• %dm</font>', dist)
-                            local size = getfontsize(removeTags(label.Text), label.TextSize, label.FontFace, Vector2.new(100000, 100000))
-                            label.Size = UDim2.fromOffset(size.X + 10, size.Y + 6)
-                            label.Position = UDim2.fromOffset(screen.X, screen.Y)
-                        end
-                    end
-                end))
-                for _, v in workspace:GetDescendants() do
-                    if v.Name == 'desert_pot' then
-                        task.spawn(Added, v)
-                    end
-                end
-            else
-                table.clear(Reference)
-                Folder:ClearAllChildren()
-            end
-        end,
-        Tooltip = 'Shows desert pots with distance'
-    })
+	PotESP = vape.Categories.Render:CreateModule({
+		Name = 'Pot ESP',
+		Function = function(callback)
+			if callback then
+				PotESP:Clean(workspace.DescendantAdded:Connect(function(v)
+					if v.Name == 'desert_pot' then
+						task.spawn(Added, v)
+						if AlertSpawn and AlertSpawn.Enabled then
+							notif('Pot ESP', 'Desert pot spawned!', 3)
+						end
+					end
+				end))
+				PotESP:Clean(workspace.DescendantRemoving:Connect(Removing))
+				PotESP:Clean(runService.PreRender:Connect(function()
+					local char = lplr.Character
+					local root = char and char:FindFirstChild('HumanoidRootPart')
+					for pot, obj in Reference do
+						local pos = getPos(pot)
+						if not pos then
+							if obj.mode == 'drawing' then
+								obj.bg.Visible = false
+								obj.txt.Visible = false
+							else
+								obj.card.Visible = false
+							end
+							continue
+						end
+						local screen, vis = gameCamera:WorldToViewportPoint(pos + Vector3.new(0, 2, 0))
+						local dist = root and math.round((root.Position - pos).Magnitude) or 0
+						local label = string.format('Pot \u{2022} %dm', dist)
+						if obj.mode == 'drawing' then
+							obj.bg.Visible = vis
+							obj.txt.Visible = vis
+							if vis then
+								obj.txt.Text = label
+								local bounds = obj.txt.TextBounds
+								local w = bounds.X + 10
+								local h = bounds.Y + 6
+								obj.bg.Size = Vector2.new(w, h)
+								obj.bg.Position = Vector2.new(screen.X - w / 2, screen.Y - h)
+								obj.txt.Position = obj.bg.Position + Vector2.new(5, 3)
+							end
+						else
+							obj.card.Visible = vis
+							if vis then
+								obj.card.Info.Text = 'Pot • ' .. dist .. 'm'
+								obj.card.Position = UDim2.fromOffset(screen.X, screen.Y)
+							end
+						end
+					end
+				end))
+				for _, v in workspace:GetDescendants() do
+					if v.Name == 'desert_pot' then
+						task.spawn(Added, v)
+					end
+				end
+			else
+				for v in pairs(Reference) do
+					Removing(v)
+				end
+			end
+		end,
+		Tooltip = 'Shows desert pots with distance'
+	})
+	AlertSpawn = PotESP:CreateToggle({
+		Name = 'Alert On Spawn',
+		Default = false,
+	})
+	DrawingToggle = PotESP:CreateToggle({
+		Name = 'Drawing',
+		Default = false,
+		Tooltip = 'Use Drawing API (invisible to recorder)',
+		Function = function()
+			if PotESP.Enabled then PotESP:Toggle(); PotESP:Toggle() end
+		end
+	})
 end)
 
 run(function()
@@ -10801,6 +11318,71 @@ run(function()
     })
 end)
 
+run(function()
+	local CleanRecord
+	local savedStates = {}
+	local pgChildConn = nil
+
+	local function hideAllGui()
+		pcall(function()
+			vape.gui.Enabled = false
+			local pg = lplr:FindFirstChild('PlayerGui')
+			if not pg then return end
+			savedStates = {}
+			for _, obj in pg:GetChildren() do
+				if obj:IsA('ScreenGui') then
+					savedStates[obj] = obj.Enabled
+					obj.Enabled = false
+				elseif obj:IsA('GuiBase2d') then
+					savedStates[obj] = obj.Visible
+					obj.Visible = false
+				end
+			end
+			if pgChildConn then pgChildConn:Disconnect() end
+			pgChildConn = pg.ChildAdded:Connect(function(child)
+				if child:IsA('ScreenGui') then
+					savedStates[child] = child.Enabled
+					child.Enabled = false
+				end
+			end)
+		end)
+	end
+
+	local function restoreAllGui()
+		pcall(function()
+			vape.gui.Enabled = true
+			if pgChildConn then pgChildConn:Disconnect(); pgChildConn = nil end
+			for obj, state in savedStates do
+				if obj and obj.Parent then
+					if obj:IsA('ScreenGui') then obj.Enabled = state
+					elseif obj:IsA('GuiBase2d') then obj.Visible = state end
+				end
+			end
+			savedStates = {}
+		end)
+	end
+
+	CleanRecord = vape.Categories.Render:CreateModule({
+		Name = 'Clean Record',
+		Default = true,
+		Tooltip = 'Hides all GUI and notifications during Roblox recordings',
+		Function = function(callback)
+			if callback then
+				pcall(function()
+					local vrs = game:GetService('VideoRecordingService')
+					CleanRecord:Clean(vrs.RecordingStarted:Connect(function()
+						hideAllGui()
+					end))
+					CleanRecord:Clean(vrs.RecordingStopped:Connect(function()
+						restoreAllGui()
+					end))
+				end)
+			else
+				restoreAllGui()
+			end
+		end,
+	})
+end)
 
 --[[
     Utility
