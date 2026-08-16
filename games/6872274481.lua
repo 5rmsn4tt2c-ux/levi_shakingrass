@@ -15713,7 +15713,19 @@ run(function()
 									})
 									if CatVapeAutoBank.Enabled and part and part.Parent and not table.find(CatVapeReference, part) then
 										table.insert(CatVapeReference, part)
+										-- Hide + fling to the sky IMMEDIATELY so it never renders at your head.
+										-- ClearAllChildren removes the visual mesh; setting CFrame/velocity
+										-- here (before the next PreRender) closes the one-frame flicker gap.
 										part:ClearAllChildren()
+										pcall(function()
+											if part:IsA('BasePart') then
+												part.Transparency = 1
+												part.LocalTransparencyModifier = 1
+											end
+										end)
+										local idx = #CatVapeReference
+										part.Velocity = Vector3.zero
+										part.CFrame = base + Vector3.new((idx % rows) * 1200, 0, math.floor(idx / rows) * 1200)
 										part.AncestryChanged:Once(function()
 											cvRemoved(part)
 										end)
