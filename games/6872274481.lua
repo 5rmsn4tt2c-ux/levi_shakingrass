@@ -15583,25 +15583,45 @@ run(function()
 		return shop, items, upgrades, newid
 	end
 
+	local cvStatusDot
 	local function cvAdded(itemType)
-		local item = Instance.new('ImageLabel')
-		item.Image = bedwars.getIcon({itemType = itemType}, true)
-		item.Size = UDim2.fromOffset(32, 32)
-		item.Name = itemType
-		item.BackgroundTransparency = 1
-		item.LayoutOrder = #CatVapeUI:GetChildren()
-		item.Parent = CatVapeUI
-		local itemtext = Instance.new('TextLabel')
-		itemtext.Name = 'Amount'
-		itemtext.Size = UDim2.fromScale(1, 1)
-		itemtext.BackgroundTransparency = 1
-		itemtext.Text = ''
-		itemtext.TextColor3 = Color3.new(1, 1, 1)
-		itemtext.TextSize = 16
-		itemtext.TextStrokeTransparency = 0.3
-		itemtext.Font = Enum.Font.Arial
-		itemtext.Parent = item
-		CatVapeItems[itemType] = {Amount = 0, Object = itemtext}
+		local slot = Instance.new('Frame')
+		slot.Name = itemType
+		slot.Size = UDim2.fromOffset(48, 56)
+		slot.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+		slot.BorderSizePixel = 0
+		slot.LayoutOrder = #CatVapeUI:GetChildren()
+		slot.Parent = CatVapeUI
+		Instance.new('UICorner', slot).CornerRadius = UDim.new(0, 6)
+
+		local icon = Instance.new('ImageLabel')
+		icon.Image = bedwars.getIcon({itemType = itemType}, true)
+		icon.Size = UDim2.fromOffset(30, 30)
+		icon.Position = UDim2.new(0.5, -15, 0, 6)
+		icon.BackgroundTransparency = 1
+		icon.Parent = slot
+
+		local amtLabel = Instance.new('TextLabel')
+		amtLabel.Name = 'Amount'
+		amtLabel.Size = UDim2.new(1, 0, 0, 16)
+		amtLabel.Position = UDim2.new(0, 0, 1, -18)
+		amtLabel.BackgroundTransparency = 1
+		amtLabel.Text = '0'
+		amtLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+		amtLabel.TextSize = 13
+		amtLabel.Font = Enum.Font.GothamBold
+		amtLabel.TextStrokeTransparency = 0.5
+		amtLabel.Parent = slot
+
+		CatVapeItems[itemType] = {Amount = 0, Object = amtLabel}
+	end
+
+	local function cvSetStatus(storing)
+		if cvStatusDot then
+			cvStatusDot.BackgroundColor3 = storing
+				and Color3.fromRGB(80, 200, 120)
+				or Color3.fromRGB(255, 180, 50)
+		end
 	end
 
 	local function cvRemoved(part)
@@ -15615,22 +15635,71 @@ run(function()
 		Name = 'CatVape AutoBank',
 		Function = function(callback)
 			if callback then
+				-- Outer card
 				CatVapeUI = Instance.new('Frame')
-				CatVapeUI.Size = UDim2.new(1, 0, 0, 32)
-				CatVapeUI.AnchorPoint = Vector2.new(0.5, 0)
-				CatVapeUI.Position = UDim2.new(0.5, 0, 0, -240)
-				CatVapeUI.BackgroundTransparency = 1
+				CatVapeUI.Name = 'CatVapeBankUI'
+				CatVapeUI.AnchorPoint = Vector2.new(0.5, 1)
+				CatVapeUI.Position = UDim2.new(0.5, 0, 1, -80)
+				CatVapeUI.AutomaticSize = Enum.AutomaticSize.X
+				CatVapeUI.Size = UDim2.fromOffset(0, 80)
+				CatVapeUI.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+				CatVapeUI.BorderSizePixel = 0
 				CatVapeUI.Visible = CatVapeUIToggle.Enabled
 				CatVapeUI.Parent = vape.gui
 				CatVapeAutoBank:Clean(CatVapeUI)
-				local Sort = Instance.new('UIListLayout')
-				Sort.FillDirection = Enum.FillDirection.Horizontal
-				Sort.HorizontalAlignment = Enum.HorizontalAlignment.Center
-				Sort.SortOrder = Enum.SortOrder.LayoutOrder
-				Sort.Parent = CatVapeUI
+				Instance.new('UICorner', CatVapeUI).CornerRadius = UDim.new(0, 10)
+				local uiPad = Instance.new('UIPadding', CatVapeUI)
+				uiPad.PaddingLeft   = UDim.new(0, 10)
+				uiPad.PaddingRight  = UDim.new(0, 10)
+				uiPad.PaddingTop    = UDim.new(0, 6)
+				uiPad.PaddingBottom = UDim.new(0, 6)
+
+				-- Header row
+				local header = Instance.new('Frame')
+				header.Size = UDim2.new(1, 0, 0, 18)
+				header.BackgroundTransparency = 1
+				header.Parent = CatVapeUI
+				local headerLayout = Instance.new('UIListLayout', header)
+				headerLayout.FillDirection = Enum.FillDirection.Horizontal
+				headerLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+				headerLayout.Padding = UDim.new(0, 5)
+
+				cvStatusDot = Instance.new('Frame')
+				cvStatusDot.Size = UDim2.fromOffset(8, 8)
+				cvStatusDot.BackgroundColor3 = Color3.fromRGB(80, 200, 120)
+				cvStatusDot.BorderSizePixel = 0
+				cvStatusDot.Parent = header
+				Instance.new('UICorner', cvStatusDot).CornerRadius = UDim.new(1, 0)
+
+				local title = Instance.new('TextLabel')
+				title.Size = UDim2.fromOffset(120, 18)
+				title.BackgroundTransparency = 1
+				title.Text = 'CatVape AutoBank'
+				title.TextColor3 = Color3.fromRGB(200, 200, 210)
+				title.TextSize = 12
+				title.Font = Enum.Font.GothamBold
+				title.TextXAlignment = Enum.TextXAlignment.Left
+				title.Parent = header
+
+				-- Items row
+				local itemsRow = Instance.new('Frame')
+				itemsRow.Size = UDim2.new(1, 0, 0, 56)
+				itemsRow.Position = UDim2.fromOffset(0, 22)
+				itemsRow.BackgroundTransparency = 1
+				itemsRow.AutomaticSize = Enum.AutomaticSize.X
+				itemsRow.Parent = CatVapeUI
+				local itemsLayout = Instance.new('UIListLayout', itemsRow)
+				itemsLayout.FillDirection = Enum.FillDirection.Horizontal
+				itemsLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+				itemsLayout.Padding = UDim.new(0, 6)
+
+				-- Swap CatVapeUI to itemsRow for cvAdded
+				local _oldUI = CatVapeUI
+				CatVapeUI = itemsRow
 				for _, v in CatVapeWhitelist.ListEnabled do
 					cvAdded(v)
 				end
+				CatVapeUI = _oldUI
 
 				local near = false
 				local base = CFrame.new(1e3, 1e5, 1e3)
@@ -15657,11 +15726,12 @@ run(function()
 					local hotbarFrame = hotbar and hotbar:FindFirstChild('1')
 					hotbar = hotbarFrame and hotbarFrame:FindFirstChild('HotbarHealthbarContainer')
 					if hotbar then
-						CatVapeUI.Position = UDim2.new(0.5, 0, 0, (hotbar.AbsolutePosition.Y + guiService:GetGuiInset().Y) - 60)
+						CatVapeUI.Position = UDim2.new(0.5, 0, 0, (hotbar.AbsolutePosition.Y + guiService:GetGuiInset().Y) - 10)
 					end
 
 					if entitylib.isAlive and not cvGetShopNPC() then
 						near = false
+						cvSetStatus(true)
 						for _, v in store.inventory.inventory.items do
 							local name = v.tool and v.tool.Name or nil
 							if name and table.find(CatVapeWhitelist.ListEnabled, name) and (CatVapeBlacklist[name] or 0) < tick() then
@@ -15684,6 +15754,7 @@ run(function()
 						end
 					elseif entitylib.isAlive and (not CatVapeGUICheck.Enabled or bedwars.AppController:isAppOpen('BedwarsItemShopApp')) then
 						near = true
+						cvSetStatus(false)
 						for _, v in CatVapeReference do
 							v.Velocity = Vector3.zero
 							v.CFrame = entitylib.character.Head.CFrame
