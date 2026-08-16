@@ -551,6 +551,29 @@ function module.getLatencyBias()
 	return latencyBias, epochRate
 end
 
+-- Diagnostic accessor: exposes what the model has learned about a target so a
+-- debug caller can see why a shot led where it did. Read-only snapshot.
+function module.getMotionDebug(root)
+	local state = targetMotion[root]
+	if not state then return nil end
+	local now = workspace:GetServerTimeNow()
+	return {
+		velocity = state.velocity,
+		strafeSeen = state.strafeSeen,
+		strafeHalf = state.strafeHalf,
+		strafeElapsed = state.strafeReversal and now - state.strafeReversal or nil,
+		turnSeen = state.turnSeen,
+		turnRate = state.turnRate,
+		jumpVelocity = state.jumpVelocity,
+		jumpPeriod = state.jumpPeriod,
+		flying = state.flying,
+		knockback = (state.knockbackUntil and now < state.knockbackUntil) or false,
+		missRate = state.missRate,
+		updateInterval = state.updateInterval,
+		stale = state.updateInterval and math.clamp(state.updateInterval * 0.5, 0, 0.06) or nil,
+	}
+end
+
 local worldFilter
 local learnedParams = RaycastParams.new()
 learnedParams.FilterType = Enum.RaycastFilterType.Include

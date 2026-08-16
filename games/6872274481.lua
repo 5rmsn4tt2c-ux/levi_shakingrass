@@ -5584,6 +5584,132 @@ run(function()
     rayCheck.FilterType = Enum.RaycastFilterType.Include
     rayCheck.FilterDescendantsInstances = {workspace:FindFirstChild('Map')}
     local launchHook
+
+    -- ============================================================
+    -- Projectile Aimbot DEBUG
+    -- Writes levi_shakingrass/pa_debug.txt. For each shot it records what PA
+    -- predicted vs where the target actually was when the projectile arrived,
+    -- so a missed shot can be diagnosed: cross-track = they dodged unpredictably,
+    -- along-track = lead/latency off, vertical = jump/gravity off. It also logs
+    -- what the model had learned (strafe/turn/jump/knockback) at fire time.
+    -- ============================================================
+    local PADebug
+    local paDebugPending = {}
+    local paShotId = 0
+    local paDebugFile = 'levi_shakingrass/pa_debug.txt'
+
+    local function paLog(line)
+        pcall(function()
+            if appendfile then
+                appendfile(paDebugFile, line .. '\n')
+            else
+                local ex = (isfile and isfile(paDebugFile) and readfile(paDebugFile)) or ''
+                writefile(paDebugFile, ex .. line .. '\n')
+            end
+        end)
+    end
+
+    local function paFmtV(v)
+        if typeof(v) ~= 'Vector3' then return 'nil' end
+        return string.format('(%.1f, %.1f, %.1f)', v.X, v.Y, v.Z)
+    end
+    local function paFmtN(n, d)
+        if type(n) ~= 'number' then return 'nil' end
+        return string.format('%.' .. (d or 3) .. 'f', n)
+    end
+
+    local function paDebugCapture(plr, origin, aimPart, predImpact, predTime)
+        local root = plr.RootPart
+        if not root then return end
+        local now = workspace:GetServerTimeNow()
+        local bias, epochRate = prediction.getLatencyBias()
+        local spread, spreadN = prediction.getResidualSpread()
+        paShotId += 1
+        table.insert(paDebugPending, {
+            id = paShotId,
+            fireTime = now,
+            arriveTime = now + (predTime or 0),
+            travelTime = predTime or 0,
+            root = root,
+            plrName = (plr.Player and plr.Player.Name) or 'NPC',
+            origin = origin,
+            firePos = root.Position,
+            fireVel = root.Velocity,
+            aimOffset = (typeof(aimPart) == 'Vector3') and (aimPart - root.Position) or Vector3.zero,
+            predImpact = predImpact,
+            latency = prediction.getLatency(),
+            rawLatency = prediction.getRawLatency(),
+            bias = bias,
+            epochRate = epochRate,
+            spread = spread,
+            spreadN = spreadN,
+            motion = prediction.getMotionDebug(root),
+            dist = (root.Position - origin).Magnitude,
+        })
+    end
+
+    local function paDebugWrite(s)
+        local root = s.root
+        if not root or not root.Parent then
+            paLog(string.format('#%d  target gone before arrival (died/left) | led dist %s | travel %ss',
+                s.id, paFmtN(s.dist, 1), paFmtN(s.travelTime)))
+            paLog('')
+            return
+        end
+        local actualPos = root.Position
+        local actualVel = root.Velocity
+        -- Aim-part actual position at arrival (rigid offset from root)
+        local actualAim = actualPos + s.aimOffset
+        -- PA prediction error against where PA aimed the projectile to arrive
+        local resPA = (typeof(s.predImpact) == 'Vector3') and (actualAim - s.predImpact) or Vector3.zero
+        -- Naive constant-velocity lead (what a dumb solver would have aimed)
+        local naive = s.firePos + s.fireVel * (s.travelTime + (s.latency or 0))
+        local resNaive = actualPos - naive
+        -- Decompose PA error along/cross the fire-time horizontal heading
+        local flat = Vector3.new(s.fireVel.X, 0, s.fireVel.Z)
+        local dir = flat.Magnitude > 0.1 and flat.Unit or Vector3.zero
+        local flatRes = Vector3.new(resPA.X, 0, resPA.Z)
+        local along = (dir.Magnitude > 0) and flatRes:Dot(dir) or 0
+        local cross = (dir.Magnitude > 0) and (flatRes - dir * along).Magnitude or flatRes.Magnitude
+        local vert = resPA.Y
+        local m = s.motion
+        paLog(string.format('#%d  %s | %s | dist %ss | travel %ss',
+            s.id, s.plrName, os.date('%H:%M:%S'), paFmtN(s.dist, 1), paFmtN(s.travelTime)))
+        paLog(string.format('   MISS total %ss | along %ss (%s) | cross %ss (dodge) | vert %ss',
+            paFmtN(resPA.Magnitude, 1),
+            paFmtN(math.abs(along), 1), along >= 0 and 'under-led' or 'over-led',
+            paFmtN(cross, 1), paFmtN(vert, 1)))
+        paLog(string.format('   naive-lead miss %ss  ->  PA improved by %ss',
+            paFmtN(resNaive.Magnitude, 1), paFmtN(resNaive.Magnitude - resPA.Magnitude, 1)))
+        paLog(string.format('   latency %ss (raw %ss, bias %ss) | hitRate %s | residualSpread %s (n=%d)',
+            paFmtN(s.latency), paFmtN(s.rawLatency), paFmtN(s.bias),
+            s.epochRate and paFmtN(s.epochRate, 2) or 'n/a', paFmtN(s.spread, 2), s.spreadN or 0))
+        paLog(string.format('   fireVel %s (h.spd %ss) | arriveVel %s',
+            paFmtV(s.fireVel), paFmtN(flat.Magnitude, 1), paFmtV(actualVel)))
+        if m then
+            paLog(string.format('   model: strafeSeen %s half %ss | turnSeen %s rate %s | jumpV %s period %ss | flying %s | knockback %s | missRate %s | updInt %ss',
+                tostring(m.strafeSeen or 0), paFmtN(m.strafeHalf, 2),
+                tostring(m.turnSeen or 0), paFmtN(m.turnRate, 2),
+                paFmtN(m.jumpVelocity, 1), paFmtN(m.jumpPeriod, 2),
+                tostring(m.flying or false), tostring(m.knockback or false),
+                paFmtN(m.missRate, 1), paFmtN(m.stale)))
+        else
+            paLog('   model: (no per-target state — root not passed / target too new)')
+        end
+        paLog('')
+    end
+
+    local function paDebugResolve()
+        if #paDebugPending == 0 then return end
+        local now = workspace:GetServerTimeNow()
+        for i = #paDebugPending, 1, -1 do
+            local s = paDebugPending[i]
+            if now >= s.arriveTime then
+                table.remove(paDebugPending, i)
+                paDebugWrite(s)
+            end
+        end
+    end
     
     local function getMousePosition()
     	if inputService.TouchEnabled then
@@ -5627,6 +5753,8 @@ run(function()
     	Function = function(callback)
     		if callback then
     			oldd = bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition
+    			-- Resolver runs while PA is on; it no-ops unless Debug Log captured shots.
+    			ProjectileAimbot:Clean(runService.Heartbeat:Connect(paDebugResolve))
     			launchHook = bedwars.ProjectileLaunchHook:Add('ProjectileAimbot', 100, function(nextLaunch, ...)
     				local self, projmeta, worldmeta, origin, shootpos = ...
     				local plr = entitylib.EntityMouse({
@@ -5682,8 +5810,11 @@ run(function()
     					-- Pass the target's RootPart so the prediction library can learn its per-target
     					-- motion (strafe/turn/jump/knockback) and apply latency compensation internally.
     					-- targetpos stays the aim part; the library derives the aim/root offset itself.
-    					local calc = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos, projmeta.projectile == 'telepearl' and Vector3.zero or plr.RootPart.Velocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, nil, plr.RootPart)
+    					local calc, predImpact, predTime = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos, projmeta.projectile == 'telepearl' and Vector3.zero or plr.RootPart.Velocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, nil, plr.RootPart)
     					if calc then
+    						if PADebug and PADebug.Enabled then
+    							paDebugCapture(plr, offsetpos, targetpos, predImpact, predTime)
+    						end
     						targetinfo.Targets[plr] = tick() + 1
     						return {
     							initialVelocity = CFrame.new(newlook.Position, calc).LookVector * (projSpeed * (AutoCharge.Enabled and 1 or projmeta.velocityMultiplier)),
@@ -5757,6 +5888,21 @@ run(function()
     	Default = {'gloop', 'telepearl'},
     	Darker = true,
     	Placeholder = 'projectile',
+    })
+    PADebug = ProjectileAimbot:CreateToggle({
+    	Name = 'Debug Log',
+    	Default = false,
+    	Function = function(call)
+    		if call then
+    			paDebugPending = {}
+    			pcall(function()
+    				writefile(paDebugFile, '=== Projectile Aimbot debug — ' .. os.date('%Y-%m-%d %H:%M:%S') .. ' ===\n'
+    					.. 'along = lead/latency error (under-led = arrow behind them) | cross = they dodged | vert = jump/gravity\n\n')
+    			end)
+    			notif('Projectile Aimbot', 'Debug logging to pa_debug.txt', 5, 'info')
+    		end
+    	end,
+    	Tooltip = 'Logs each shot vs where the target actually was, to pa_debug.txt in your workspace',
     })
 end)
 
