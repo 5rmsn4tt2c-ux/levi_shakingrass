@@ -12953,6 +12953,49 @@ run(function()
     })
 end)
 
+run(function()
+	local NoFallTry1
+
+	NoFallTry1 = vape.Categories.Blatant:CreateModule({
+		Name = 'NoFall Try 1',
+		Function = function(callback)
+			if callback then
+				if entitylib.isAlive then
+					for _, v in getconnections(entitylib.character.Humanoid.StateChanged) do
+						v:Disable()
+					end
+				end
+				local tracked = 0
+				NoFallTry1:Clean(runService.PostSimulation:Connect(function()
+					if entitylib.isAlive and store.matchState == 1 and not (vape.Modules.InfiniteFly or {}).Enabled then
+						local root = entitylib.character.RootPart
+						local velo = root.Velocity
+						if tracked < -45 then
+							root.Velocity = Vector3.new(0, 2.5, 0)
+							entitylib.character.Humanoid:ChangeState(Enum.HumanoidStateType.Landed)
+							runService.PreRender:Wait()
+							root.Velocity = velo
+							bedwars.Client:Get(remotes.GroundHit):SendToServer(nil, Vector3.new(0, tracked, 0), workspace:GetServerTimeNow())
+						end
+						tracked = velo.Y
+					end
+				end))
+
+				NoFallTry1:Clean(entitylib.Events.LocalAdded:Connect(function(ent)
+					if ent.Humanoid:WaitForChild('Animator', 5) then
+						task.wait(0.5)
+						if NoFallTry1.Enabled then
+							NoFallTry1:Toggle()
+							NoFallTry1:Toggle()
+						end
+					end
+				end))
+			end
+		end,
+		Tooltip = 'Prevents taking fall damage.'
+	})
+end)
+
 --[[
     World
 ]]
