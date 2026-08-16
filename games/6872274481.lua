@@ -916,7 +916,7 @@ run(function()
 								if bedwars.StatusEffectMeta[name] then
 									name = bedwars.StatusEffectMeta[name]
 									for num = 1, 3 do
-										name = name:gsub(`_{num}`, '')
+										name = name:gsub('_'..tostring(num), '')
 									end
 
 									if bedwars.EnchantMeta[name] then
@@ -942,7 +942,7 @@ run(function()
 								if bedwars.StatusEffectMeta[name] then
 									name = bedwars.StatusEffectMeta[name]
 									for num = 1, 3 do
-										name = name:gsub(`_{num}`, '')
+										name = name:gsub('_'..tostring(num), '')
 									end
 									if bedwars.EnchantMeta[name] then
 										return name
@@ -3224,7 +3224,7 @@ run(function()
                             Activated = os.clock()
     
                             if Notify.Enabled then
-                                notif('AntiDeath', `Health below {Threshold.Value}%`, 12, 'warning')
+                                notif('AntiDeath', 'Health below '..tostring(Threshold.Value)..'%', 12, 'warning')
                             end
     
                             if Mode.Value == 'Teleport' then
@@ -5399,7 +5399,7 @@ run(function()
     						notif('MouseTP', 'Couldn\'t find an item or a kit to teleport with', 5)
     					end
     				elseif not MouseTPs[Movement.Value](position) then
-    					notif('MouseTP', `Couldn\'t find {Movement.Value:lower()} to teleport with`, 5)
+    					notif('MouseTP', 'Couldn\'t find '..tostring(Movement.Value:lower())..' to teleport with', 5)
     				end
     			else
     				notif('MouseTP', 'No position found.', 5)
@@ -10379,7 +10379,8 @@ run(function()
 					for obj, ref in Reference do
 						local visible = Enabled[obj]
 						local part = obj:IsA('Model') and (obj.PrimaryPart or obj:FindFirstChildWhichIsA('BasePart')) or obj
-						local headPos, headVis = if part then gameCamera:WorldToViewportPoint(part.Position + Vector3.new(0, 3, 0)) else Vector3.new(), false
+						local headPos, headVis
+						if part then headPos, headVis = gameCamera:WorldToViewportPoint(part.Position + Vector3.new(0, 3, 0)) else headPos, headVis = Vector3.new(), false end
 						local show = visible and headVis
 						if ref.mode == 'drawing' then
 							ref.bg.Visible = show
@@ -18547,7 +18548,7 @@ run(function()
     						if Show.Enabled then
     							local itemDisplay = bedwars.ItemMeta[v.itemType] and bedwars.ItemMeta[v.itemType].displayName or v.itemType
     
-    							notif('AutoFish', `You can get {v.amount} {itemDisplay:lower()}{v.amount >= 2 and 's' or ''} on ur next fish`, 20, 'info')
+    							notif('AutoFish', 'You can get '..tostring(v.amount)..' '..tostring(itemDisplay:lower())..(v.amount >= 2 and 's' or '')..' on ur next fish', 20, 'info')
     						end
     
     						if entitylib.isAlive and table.find(Blacklist.ListEnabled, v.itemType) then
@@ -22730,7 +22731,7 @@ run(function()
     			table.insert(slimes, {
     				Data = data, 
     				RootPart = v, 
-    				Name = v.Name:gsub(`_{lplr.Name}`, ''):gsub('Slime', ' Slime')
+    				Name = v.Name:gsub('_'..tostring(lplr.Name), ''):gsub('Slime', ' Slime')
     			})
     		end
     	end
