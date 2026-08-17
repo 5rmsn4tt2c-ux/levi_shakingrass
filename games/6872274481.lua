@@ -25675,3 +25675,24 @@ run(function()
 		Suffix = 's'
 	})
 end)
+
+run(function()
+    local GraySky
+    GraySky = vape.Categories.Render:CreateModule({
+        Name = 'Gray Sky',
+        Function = function(callback)
+            -- Applies the DebugSkyGray FastFlag (renders the sky flat gray).
+            -- FastFlags are read at engine startup, so this may only take full
+            -- effect after a rejoin; it's applied via the executor's fflag setter.
+            pcall(function()
+                local val = callback and 'true' or 'false'
+                if setfflag then
+                    setfflag('FFlagDebugSkyGray', val)
+                elseif getgenv().setfflag then
+                    getgenv().setfflag('FFlagDebugSkyGray', val)
+                end
+            end)
+        end,
+        Tooltip = 'FastFlag FFlagDebugSkyGray = true (gray sky). May need a rejoin to fully apply.'
+    })
+end)
