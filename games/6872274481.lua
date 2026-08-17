@@ -9118,16 +9118,14 @@ run(function()
 
     local function Added(ent)
         AntiLasso:Clean(ent.ChildAdded:Connect(function(v)
-            if not v:IsA('Accessory') then return end
-            local rope = v:FindFirstChild('Rope') or v:WaitForChild('Rope', 1)
-            if not rope then return end
-            if Random.new(os.clock()):NextNumber(1, 100) <= Chance.Value and (not Check.Enabled or entitylib.EntityPosition({
+            if v:IsA('Accessory') and v:FindFirstChild('Rope') and Random.new(os.clock()):NextNumber(1, 100) < Chance.Value and (not Check.Enabled or entitylib.EntityPosition({
                 Range = 50,
                 Part = 'RootPart',
                 Players = true
             })) then
                 ent.PrimaryPart.Anchored = true
                 v.Destroying:Once(function()
+                    task.wait(0.5)
                     ent.PrimaryPart.Anchored = false
                 end)
             end
@@ -9135,11 +9133,13 @@ run(function()
     end
 
     AntiLasso = vape.Categories.Utility:CreateModule({
-        Name = 'Anti Lasso',
+        Name = 'AntiLasso',
         Function = function(callback)
             if callback then
                 AntiLasso:Clean(entitylib.Events.LocalAdded:Connect(function(ent)
-                    Added(ent.Character)
+                    task.delay(1, function()
+                        Added(ent.Character)
+                    end)
                 end))
                 if entitylib.isAlive then
                     Added(lplr.Character)
@@ -9148,7 +9148,6 @@ run(function()
         end,
         Tooltip = 'Prevents you from getting pulled by lasso projectile.'
     })
-
     Chance = AntiLasso:CreateSlider({
         Name = 'Chance',
         Min = 0,
