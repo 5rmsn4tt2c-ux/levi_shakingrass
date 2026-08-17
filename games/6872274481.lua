@@ -13327,7 +13327,7 @@ run(function()
 	end
 
 	CatVapeAutoBank = vape.Categories.Inventory:CreateModule({
-		Name = 'CatVape AutoBank',
+		Name = 'AutoBank v2',
 		Function = function(callback)
 			if callback then
 				-- Match AutoBank V3 UI style: bottom-left dark card, gold title, colored rows
@@ -13353,7 +13353,7 @@ run(function()
 				title.BackgroundTransparency = 1
 				title.Size = UDim2.new(1, 0, 0, 20)
 				title.Position = UDim2.new(0, 0, 0, 4)
-				title.Text = 'CatVape AutoBank'
+				title.Text = 'AutoBank v2'
 				title.TextColor3 = Color3.fromRGB(255, 215, 0)
 				title.TextSize = 13
 				title.Font = Enum.Font.GothamBold
