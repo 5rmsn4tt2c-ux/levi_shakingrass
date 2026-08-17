@@ -13943,6 +13943,14 @@ run(function()
         consumeText.Text = displayName
         consumeGui.Enabled = true
         playConsumeAnimation()
+        -- Mimic the real drinking slowdown: legit potions/food halve your speed
+        -- while drinking. Restored the moment the consume finishes, cancels, or times out.
+        local slowHum = lplr.Character and lplr.Character:FindFirstChildOfClass('Humanoid')
+        local origWalkSpeed
+        if slowHum then
+            origWalkSpeed = slowHum.WalkSpeed
+            slowHum.WalkSpeed = origWalkSpeed * 0.5
+        end
         local done = false
         -- Keep the first-person drink/eat animation running for the whole hold
         -- so it looks like a genuine manual consume instead of a single flick.
@@ -13973,6 +13981,10 @@ run(function()
         end
         done = true
         consumeGui.Enabled = false
+        -- Restore movement speed the instant drinking ends/cancels
+        if slowHum and slowHum.Parent and origWalkSpeed then
+            slowHum.WalkSpeed = origWalkSpeed
+        end
         consumeFill.Size = UDim2.new(0, 0, 1, 0)
         if entitylib.isAlive and store.hand.tool and store.hand.tool.Name == name then
             local currentItem = getItem(name)
@@ -18022,7 +18034,7 @@ run(function()
     for _, v in sortTable do
         Toggles[v] = AutoKit:CreateToggle({
             Name = bedwars.BedwarsKitMeta[v].name,
-            Default = true
+            Default = false
         })
     end
 end)
