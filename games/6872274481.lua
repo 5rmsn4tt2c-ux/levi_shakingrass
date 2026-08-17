@@ -19563,62 +19563,37 @@ end)
 
 run(function()
     local CannonSpeed
-    local Speed, Duration
-    local boostTick, legitSpeed, captured = 0, 200, false
+    local Value
 
-    CannonSpeed = vape.Categories.Kits:CreateModule({
-        Name = 'Cannon Speed',
-        Tooltip = 'Controls how fast the cannon launches you. Holds your horizontal launch speed for a moment after firing (network-owner velocity, same idea as Long Jump). The aim itself is untouched.',
+    CannonSpeed = vape.Categories.Blatant:CreateModule({
+        Name = 'CannonSpeed',
         Function = function(callback)
-            if callback then
-                local old = bedwars.CannonHandController.launchSelf
-                bedwars.CannonHandController.launchSelf = function(...)
-                    boostTick = tick() + Duration.Value
-                    captured = false
-                    return old(...)
-                end
-                CannonSpeed:Clean(function()
-                    if bedwars.CannonHandController.launchSelf ~= old then
-                        bedwars.CannonHandController.launchSelf = old
-                    end
-                end)
-
-                CannonSpeed:Clean(runService.PreSimulation:Connect(function()
-                    local root = entitylib.isAlive and entitylib.character.RootPart or nil
-                    if root and isnetworkowner(root) and boostTick > tick() then
-                        local vel = root.AssemblyLinearVelocity
-                        local horiz = Vector3.new(vel.X, 0, vel.Z)
-                        if horiz.Magnitude > 1 then
-                            if not captured then
-                                legitSpeed = horiz.Magnitude
-                                captured = true
-                            end
-                            root.AssemblyLinearVelocity = horiz.Unit * Speed.Value + Vector3.new(0, vel.Y, 0)
-                        end
-                    end
-                end))
-            end
-        end
+            pcall(function()
+                debug.setconstant(bedwars.CannonHandController.launchSelf, 15, callback and Value.Value or 200)
+            end)
+        end,
+        Tooltip = 'Makes you go faster with cannon.'
     })
-    Speed = CannonSpeed:CreateSlider({
+    Value = CannonSpeed:CreateSlider({
         Name = 'Speed',
-        Min = 50,
-        Max = 1000,
+        Min = 1,
+        Max = 400,
         Default = 200,
-        Suffix = 'mass'
-    })
-    Duration = CannonSpeed:CreateSlider({
-        Name = 'Duration',
-        Min = 0.1,
-        Max = 4,
-        Default = 1.5,
-        Decimal = 10,
-        Suffix = 'sec'
+        Function = function(val)
+            if CannonSpeed.Enabled then
+                pcall(function()
+                    debug.setconstant(bedwars.CannonHandController.launchSelf, 15, val)
+                end)
+            end
+        end,
+        Suffix = function(val)
+            return val <= 1 and 'stud' or 'studs'
+        end
     })
     CannonSpeed:CreateButton({
         Name = 'Sync to legit speed',
         Function = function()
-            Speed:SetValue(math.floor(legitSpeed))
+            Value:SetValue(200)
         end
     })
 end)
