@@ -22292,6 +22292,7 @@ run(function()
     local UpdateRate
     local MaxTargets
     local KAAuto
+    local Swing
     local nextHit = {}
     local AttackRemote = {FireServer = function(self, ...) end}
     local SwingMissRemote = {FireServer = function(self, ...) end}
@@ -22416,7 +22417,7 @@ run(function()
                             end
                             lastent, lastfound = primary, tick()
 
-                            if not LegitAura.Enabled and (tick() - bedwars.SwordController.lastSwing) >= (Perfect.Enabled and (meta.sword.attackSpeed or 0.11) or math.max(SwingTime.Value, 0.11)) then
+                            if not Swing.Enabled and not LegitAura.Enabled and (tick() - bedwars.SwordController.lastSwing) >= (Perfect.Enabled and (meta.sword.attackSpeed or 0.11) or math.max(SwingTime.Value, 0.11)) then
                                 bedwars.SwordController:playSwordEffect(meta, false)
                                 bedwars.SwordController.lastSwing = tick()
                             end
@@ -22538,6 +22539,7 @@ run(function()
         Default = true,
     })
     Limit = KingBen82:CreateToggle({Name = 'Limit to items'})
+    Swing = KingBen82:CreateToggle({Name = 'No Swing'})
     KAAuto = KingBen82:CreateToggle({
         Name = 'AutoClicker',
         Tooltip = 'Simulates an autoclicker at 100 CPS alongside the aura',
