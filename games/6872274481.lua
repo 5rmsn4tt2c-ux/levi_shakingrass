@@ -1600,7 +1600,16 @@ run(function()
     local ClickAim
     local Mouse
     local Limit
-    
+
+    -- aim smoothing modes (keys of aimfuncs) and target-sort methods
+    local modes = {'Simple', 'Adaptive'}
+    local methods = {'Damage', 'Distance'}
+    for i in sortmethods do
+        if not table.find(methods, i) then
+            table.insert(methods, i)
+        end
+    end
+
     local function ease(t)
         return t < 0.5 and 4 * t * t * t or 1 - math.pow(-2 * t + 2, 3) / 2
     end
