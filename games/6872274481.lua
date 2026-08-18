@@ -22289,7 +22289,7 @@ run(function()
     local SilentAim
     local SwingTime
     local Perfect
-    local Hitreg
+    local UpdateRate
     local MaxTargets
     local nextHit = {}
     local AttackRemote = {FireServer = function(self, ...) end}
@@ -22362,7 +22362,7 @@ run(function()
                 end))
 
                 repeat
-                    task.wait()
+                    task.wait(1 / math.max(UpdateRate.Value, 1))
                     local sword, meta = getAttackData()
                     if sword then
                         local localPosition = entitylib.character.RootPart.Position
@@ -22407,8 +22407,7 @@ run(function()
                                 bedwars.SwordController.lastSwing = tick()
                             end
 
-                            local minInterval = meta.sword.attackSpeed or 0.33
-                            local delay = math.max(1 / math.max(Hitreg.Value, 1), minInterval)
+                            local delay = meta.sword.attackSpeed or 0.33
                             local current = tick()
 
                             for _, ent in ents do
@@ -22499,12 +22498,12 @@ run(function()
         Max = 5,
         Default = 3,
     })
-    Hitreg = KingBen82:CreateSlider({
-        Name = 'Hitreg',
+    UpdateRate = KingBen82:CreateSlider({
+        Name = 'Update rate',
         Min = 1,
-        Max = 36,
-        Default = 36,
-        Suffix = 'reg',
+        Max = 120,
+        Default = 60,
+        Suffix = 'hz',
     })
     Mode = KingBen82:CreateDropdown({
         Name = 'Target mode',
