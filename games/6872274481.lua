@@ -22287,7 +22287,6 @@ run(function()
     local Mouse
     local Limit
     local SilentAim
-    local SwingTime
     local Perfect
     local UpdateRate
     local MaxTargets
@@ -22417,7 +22416,7 @@ run(function()
                             end
                             lastent, lastfound = primary, tick()
 
-                            if not Swing.Enabled and not LegitAura.Enabled and (tick() - bedwars.SwordController.lastSwing) >= (Perfect.Enabled and (meta.sword.attackSpeed or 0.11) or math.max(SwingTime.Value, 0.11)) then
+                            if not Swing.Enabled and not LegitAura.Enabled and (tick() - bedwars.SwordController.lastSwing) >= (Perfect.Enabled and (meta.sword.attackSpeed or 0.11) or 0.11) then
                                 bedwars.SwordController:playSwordEffect(meta, false)
                                 bedwars.SwordController.lastSwing = tick()
                             end
@@ -22482,15 +22481,6 @@ run(function()
         Default = 6,
         Decimal = 5,
     })
-    SwingTime = KingBen82:CreateSlider({
-        Name = 'Swing time',
-        Visible = false,
-        Darker = true,
-        Min = 0,
-        Max = 0.5,
-        Default = 0.42,
-        Decimal = 100,
-    })
     Range = KingBen82:CreateSlider({
         Name = 'Extra swing distance',
         Min = 0,
@@ -22527,9 +22517,6 @@ run(function()
     })
     Perfect = KingBen82:CreateToggle({
         Name = 'Perfect Swing',
-        Function = function(callback)
-            SwingTime.Object.Visible = not callback
-        end,
         Default = true,
     })
     Mouse = KingBen82:CreateToggle({Name = 'Require mouse down'})
