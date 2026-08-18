@@ -22291,6 +22291,7 @@ run(function()
     local Perfect
     local UpdateRate
     local MaxTargets
+    local KAAuto
     local nextHit = {}
     local AttackRemote = {FireServer = function(self, ...) end}
     local SwingMissRemote = {FireServer = function(self, ...) end}
@@ -22346,6 +22347,19 @@ run(function()
                 local lastent, lastfound = nil, 0
                 local foundat = tick()
                 table.clear(nextHit)
+
+                KingBen82:Clean(task.spawn(function()
+                    while KingBen82.Enabled do
+                        if KAAuto and KAAuto.Enabled and (tick() - lastfound) < 0.5 then
+                            pcall(function()
+                                if store.hand and store.hand.toolType == 'sword' and entitylib.isAlive then
+                                    bedwars.SwordController:swingSwordAtMouse(0.39)
+                                end
+                            end)
+                        end
+                        task.wait(1 / 100)
+                    end
+                end))
 
                 KingBen82:Clean(runService.PostSimulation:Connect(function(dt)
                     if entitylib.isAlive and lastent and tick() - lastfound < 0.5 then
@@ -22524,6 +22538,11 @@ run(function()
         Default = true,
     })
     Limit = KingBen82:CreateToggle({Name = 'Limit to items'})
+    KAAuto = KingBen82:CreateToggle({
+        Name = 'AutoClicker',
+        Tooltip = 'Simulates an autoclicker at 100 CPS alongside the aura',
+        Default = false,
+    })
 end)
 run(function()
     local WhimAuto
