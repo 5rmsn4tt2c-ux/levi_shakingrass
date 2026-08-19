@@ -22276,6 +22276,333 @@ run(function()
     })
 end)
 run(function()
+    -- new silent: Closest Silent Aim 2 aiming + king ben hitting as a toggle
+    local NewSilent
+    local Targets
+    local Speed
+    local Range
+    local Angle
+    local Mode
+    local LegitAura
+    local Mouse
+    local Limit
+    local SilentAim
+    local Perfect
+    local KingBenHit
+    local UpdateRate
+    local _perTargetNextHit = {}
+    local lastCustomHitTime = 0
+    local _t4HitCount = {}
+    local _t4HitTick = {}
+    local AttackRemote = {FireServer = function(self, ...) end}
+    local SwingMissRemote = {FireServer = function(self, ...) end}
+
+    task.spawn(function()
+        AttackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
+    end)
+    task.spawn(function()
+        SwingMissRemote = bedwars.Client:Get('SwordSwingMiss').instance
+    end)
+
+    local function getAttackData()
+        if not entitylib.isAlive then return false end
+        if Mouse.Enabled then
+            if not inputService:IsMouseButtonPressed(0) and (tick() - bedwars.SwordController.lastSwing) > 0.3 then
+                return false
+            end
+        end
+        if LegitAura.Enabled and (tick() - bedwars.SwordController.lastSwing) > 0.3 then
+            return false
+        end
+        if (lplr.Character:GetAttribute('StunnedUntilTime') or 0) - workspace:GetServerTimeNow() > 0 then
+            return false
+        end
+        if bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
+            return false
+        end
+        local sword = Limit.Enabled and store.hand or store.tools.sword
+        if not sword or not sword.tool then return false end
+        local meta = bedwars.ItemMeta[sword.tool.Name]
+        if Limit.Enabled then
+            if store.hand.toolType ~= 'sword' or bedwars.DaoController.chargingMaid then
+                return false
+            end
+        end
+        return sword, meta
+    end
+
+    local function ease(t)
+        return t < 0.5 and 4 * t * t * t or 1 - math.pow(-2 * t + 2, 3) / 2
+    end
+
+    local function findAim(localcframe, ent, fps, started)
+        local prog = ease(math.min((tick() - started) / (1 / (Speed.Value * 0.5)), 1))
+        local speed = Speed.Value * prog
+        return localcframe:Lerp(CFrame.lookAt(localcframe.p, ent.RootPart.Position), speed * fps), speed
+    end
+
+    -- king ben's per-target hit timing (caps at 35 hits per 10s)
+    local function canHitTarget(char, meta)
+        local now = tick()
+        local swordSpeed = (meta and meta.sword and meta.sword.attackSpeed) or 0.42
+        local speed = math.min(swordSpeed, 10 / 35)
+        local nh = _perTargetNextHit[char] or 0
+        if now >= nh then
+            local overshoot = (nh > 0) and math.min(now - nh, speed) or 0
+            _perTargetNextHit[char] = now + speed - overshoot
+            return true
+        end
+        return false
+    end
+
+    -- king ben's FireAttackRemote with reach-pull and T4 limiter
+    local function FireAttackRemote(attackTable)
+        if not AttackRemote then return end
+
+        local t4ok, t4plr = pcall(function()
+            return playersService:GetPlayerFromCharacter(attackTable.entityInstance)
+        end)
+        if t4ok and t4plr then
+            local targetTier = getAccountTier(t4plr)
+            if targetTier >= 99 then return end
+            if targetTier >= 4 and getAccountTier(lplr) == 0 then
+                local uid = t4plr.UserId
+                local now = tick()
+                if not _t4HitTick[uid] or now - _t4HitTick[uid] >= 1 then
+                    _t4HitTick[uid] = now
+                    _t4HitCount[uid] = 0
+                end
+                _t4HitCount[uid] = (_t4HitCount[uid] or 0) + 1
+                if _t4HitCount[uid] > 32 then return end
+            end
+        end
+
+        local suc, plr = pcall(function()
+            return playersService:GetPlayerFromCharacter(attackTable.entityInstance)
+        end)
+
+        local selfpos = attackTable.validate.selfPosition.value
+        local targetpos = attackTable.validate.targetPosition.value
+        local actualDistance = (selfpos - targetpos).Magnitude
+
+        store.attackReach = (actualDistance * 100) // 1 / 100
+        store.attackReachUpdate = tick() + 1
+
+        if actualDistance > 13.5 and actualDistance <= 20 then
+            local direction = (targetpos - selfpos).Unit
+            local pullNeeded = actualDistance - 13.0
+            local safePull = math.min(pullNeeded, 3.5)
+            local newTarget = targetpos - direction * safePull
+            attackTable.validate.targetPosition.value = newTarget
+            attackTable.validate.raycast = attackTable.validate.raycast or {}
+            local camPos = (
+                attackTable.validate.raycast.cameraPosition and
+                attackTable.validate.raycast.cameraPosition.value
+            ) or (selfpos + Vector3.new(0, 1.5, 0))
+            local newDir = (newTarget - camPos).Unit
+            attackTable.validate.raycast.cameraPosition = {value = camPos}
+            attackTable.validate.raycast.cursorDirection = {value = newDir}
+        end
+
+        if suc and plr then
+            if not select(2, whitelist:get(plr)) then return end
+        end
+
+        return AttackRemote:SendToServer(attackTable)
+    end
+
+    NewSilent = vape.Categories.Combat:CreateModule({
+        Name = 'new silent',
+        Function = function(callback)
+            if callback then
+                local lastent, lastfound = nil, 0
+                local foundat = tick()
+                table.clear(_perTargetNextHit)
+
+                NewSilent:Clean(runService.PostSimulation:Connect(function(dt)
+                    if entitylib.isAlive and lastent and tick() - lastfound < 0.5 then
+                        entitylib.character.Humanoid.AutoRotate = not SilentAim.Enabled
+                        local cframe, speed = findAim(gameCamera.CFrame, lastent, dt, foundat)
+                        if SilentAim.Enabled then
+                            entitylib.character.RootPart.CFrame = entitylib.character.RootPart.CFrame:Lerp(CFrame.lookAt(entitylib.character.RootPart.Position, Vector3.new(lastent.RootPart.Position.X, entitylib.character.RootPart.Position.Y, lastent.RootPart.Position.Z)), (speed + 2) * dt)
+                        else
+                            gameCamera.CFrame = cframe
+                        end
+                    elseif entitylib.isAlive then
+                        entitylib.character.Humanoid.AutoRotate = true
+                    end
+                end))
+
+                repeat
+                    task.wait(1 / math.max(UpdateRate.Value, 1))
+                    local sword, meta = getAttackData()
+                    if sword then
+                        local localPosition = entitylib.character.RootPart.Position
+                        local ent = entitylib.EntityPosition({
+                            Origin = localPosition,
+                            Range = bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE + Range.Value,
+                            Wallcheck = Targets.Walls.Enabled or nil,
+                            Part = 'RootPart',
+                            Players = Targets.Players.Enabled,
+                            NPCs = Targets.NPCs.Enabled,
+                            Limit = 1,
+                            Sort = sortmethods[Mode.Value] or sortmethods.Distance,
+                        })
+
+                        if ent then
+                            if not store.hand or store.hand.tool ~= sword.tool then
+                                local hotbar = getHotbar(sword.tool)
+                                if hotbar then
+                                    hotbarSwitch(hotbar)
+                                else
+                                    continue
+                                end
+                            end
+
+                            local localfacing = (inputService.KeyboardEnabled and gameCamera or entitylib.character.RootPart).CFrame.LookVector * Vector3.new(1, 0, 1)
+                            local delta = (ent.RootPart.Position - localPosition)
+                            local flat = delta * Vector3.new(1, 0, 1)
+                            local facingdot = flat.Magnitude > 0 and localfacing.Magnitude > 0 and (localfacing / localfacing.Magnitude):Dot(flat / flat.Magnitude) or 0
+                            if facingdot < math.cos(math.rad(Angle.Value) / 2) then
+                                continue
+                            end
+
+                            if not LegitAura.Enabled and (tick() - bedwars.SwordController.lastSwing) >= (Perfect.Enabled and (meta.sword.attackSpeed or 0.11) or 0.11) then
+                                bedwars.SwordController:playSwordEffect(meta, false)
+                                bedwars.SwordController.lastSwing = tick()
+                            end
+
+                            if lastent ~= ent then
+                                foundat = tick()
+                            end
+                            lastent, lastfound = ent, tick()
+
+                            if KingBenHit.Enabled then
+                                -- king ben hit: per-target timing + reach-pull + T4 limiter
+                                if delta.Magnitude > bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE then
+                                    if canHitTarget(ent.Character, meta) then
+                                        pcall(SwingMissRemote.FireServer, SwingMissRemote, {chargeRatio = 0, weapon = sword.tool})
+                                    end
+                                    continue
+                                end
+
+                                if canHitTarget(ent.Character, meta) then
+                                    local dir = CFrame.lookAt(localPosition, ent.RootPart.Position).LookVector
+                                    local pos = localPosition + dir * math.max(delta.Magnitude - 14.4, 0)
+                                    bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
+                                    FireAttackRemote({
+                                        weapon = sword.tool,
+                                        chargedAttack = {chargeRatio = 0},
+                                        entityInstance = ent.Character,
+                                        validate = {
+                                            raycast = {
+                                                cameraPosition = {value = pos},
+                                                cursorDirection = {value = dir},
+                                            },
+                                            targetPosition = {value = ent.RootPart.Position},
+                                            selfPosition = {value = pos},
+                                        },
+                                    })
+                                end
+                            else
+                                -- basic hit (original closest silent aim style)
+                                local minInterval = meta.sword.attackSpeed or 0.33
+                                if delta.Magnitude > bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE then
+                                    if canHitTarget(ent.Character, meta) then
+                                        pcall(SwingMissRemote.FireServer, SwingMissRemote, {chargeRatio = 0, weapon = sword.tool})
+                                    end
+                                    continue
+                                end
+
+                                if canHitTarget(ent.Character, meta) then
+                                    local dir = CFrame.lookAt(localPosition, ent.RootPart.Position).LookVector
+                                    local pos = localPosition + dir * math.max(delta.Magnitude - 14.4, 0)
+                                    bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
+                                    AttackRemote:FireServer({
+                                        weapon = sword.tool,
+                                        chargedAttack = {chargeRatio = 0},
+                                        entityInstance = ent.Character,
+                                        validate = {
+                                            raycast = {
+                                                cameraPosition = {value = pos},
+                                                cursorDirection = {value = dir},
+                                            },
+                                            targetPosition = {value = ent.RootPart.Position},
+                                            selfPosition = {value = pos},
+                                        },
+                                    })
+                                end
+                            end
+                        else
+                            lastfound = 0
+                        end
+                    else
+                        lastfound = 0
+                    end
+                until not NewSilent.Enabled
+            else
+                if entitylib.isAlive then
+                    entitylib.character.Humanoid.AutoRotate = true
+                end
+            end
+        end,
+        Tooltip = 'Silent aim with king ben hitting as a toggle',
+    })
+
+    Targets = NewSilent:CreateTargets({Players = true, NPCs = true})
+    Speed = NewSilent:CreateSlider({
+        Name = 'Aim speed',
+        Min = 1,
+        Max = 10,
+        Default = 6,
+        Decimal = 5,
+    })
+    Range = NewSilent:CreateSlider({
+        Name = 'Extra swing distance',
+        Min = 0,
+        Max = 6,
+        Suffix = function(val)
+            return val <= 1 and 'stud' or 'studs'
+        end,
+        Decimal = 5,
+        Default = 3,
+    })
+    Angle = NewSilent:CreateSlider({
+        Name = 'Max angle',
+        Min = 1,
+        Max = 360,
+        Default = 180,
+    })
+    UpdateRate = NewSilent:CreateSlider({
+        Name = 'Update rate',
+        Min = 1,
+        Max = 120,
+        Default = 60,
+        Suffix = 'hz',
+    })
+    Mode = NewSilent:CreateDropdown({
+        Name = 'Target mode',
+        List = {'Distance', 'Health', 'Damage'},
+        Default = 'Health',
+    })
+    Perfect = NewSilent:CreateToggle({
+        Name = 'Perfect Swing',
+        Default = true,
+    })
+    Mouse = NewSilent:CreateToggle({Name = 'Require mouse down'})
+    LegitAura = NewSilent:CreateToggle({Name = 'Swing only'})
+    SilentAim = NewSilent:CreateToggle({
+        Name = 'Silent Aim',
+        Default = true,
+    })
+    Limit = NewSilent:CreateToggle({Name = 'Limit to items'})
+    KingBenHit = NewSilent:CreateToggle({
+        Name = 'king ben',
+        Tooltip = 'Use king ben hit system (reach-pull, T4 limiter, 35 hits/10s cap)',
+        Default = true,
+    })
+end)
+run(function()
     local WhimAuto
     local Targets
     local Range
