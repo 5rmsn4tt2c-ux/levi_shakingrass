@@ -23648,7 +23648,7 @@ run(function()
     end
     
     Killaura = vape.Categories.Blatant:CreateModule({
-        Name = 'king ben',
+        Name = 'bloopybestkav2',
         Function = function(callback)
             if callback then
 				local attacked = {}
@@ -23675,7 +23675,7 @@ run(function()
                 if Mouse and LegitAura and Mouse.Enabled and LegitAura.Enabled then
                     Mouse:Toggle(false)
                     LegitAura:Toggle(false)
-                    notif("king ben", "yo u cant have require mouse down AND swing only both on at da same time turned both off 4 u", 5)
+                    notif("bloopybestkav2", "yo u cant have require mouse down AND swing only both on at da same time turned both off 4 u", 5)
                 end
 
                 if RangeCircle.Enabled then
