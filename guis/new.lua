@@ -5654,6 +5654,9 @@ end
 
 local guipane
 function mainapi:Load(skipgui, profile)
+	if self.ThreadFix then
+		setthreadidentity(8)
+	end
 	if not skipgui then
 		self.GUIColor:SetValue(nil, nil, nil, 4)
 	end
