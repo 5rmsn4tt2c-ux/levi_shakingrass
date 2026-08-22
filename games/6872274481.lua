@@ -18135,35 +18135,28 @@ run(function()
 
         if charge.chargeState ~= 'IDLE' then return end
 
-        local tool = store.hand.tool
-        if not tool or tool.Name ~= Sword then return end
-
-        -- directly set charging state (startCharging has internal guards that block programmatic calls)
-        charge.chargeState = 'CHARGING'
-        charge.chargeStartTime = workspace:GetServerTimeNow()
-        charge.chargeTime = 0
+        -- use real startCharging for proper animation/state setup
+        charge:startCharging(Sword)
 
         local started = tick()
         local target = getChargeTime() + 0.05
         repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
 
         if not AutoLumen.Enabled or not entitylib.isAlive then
-            charge.chargeState = 'IDLE'
-            charge.chargeStartTime = 0
+            pcall(function() charge:stopCharging(Sword) end)
             return
         end
 
-        local tool2 = store.hand.tool
-        if not tool2 or tool2.Name ~= Sword then
-            charge.chargeState = 'IDLE'
-            charge.chargeStartTime = 0
+        local tool = store.hand.tool
+        if not tool or tool.Name ~= Sword then
+            pcall(function() charge:stopCharging(Sword) end)
             return
         end
 
         local chargeTime = tick() - started
 
-        -- match the real game flow: stopCharging (CHARGING→IDLE) then swingSwordAtMouse(chargeTime)
-        charge:stopCharging(Sword)
+        -- spy showed swingSwordAtMouse internally calls stopCharging
+        -- so do NOT call stopCharging ourselves — let swingSwordAtMouse handle it
         bedwars.SwordController:swingSwordAtMouse(chargeTime)
 
         cooldown = tick() + Delay.Value
