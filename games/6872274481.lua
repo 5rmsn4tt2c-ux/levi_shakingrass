@@ -18248,6 +18248,7 @@ run(function()
         Name = 'AutoLumen',
         Function = function(callback)
             if callback then
+                installSpy()
                 cooldown = 0
 
                 repeat
