@@ -1985,33 +1985,21 @@ run(function()
     local AutoClicker
     local Mode
     local CPS
-    local HoldActivate
-    local BurstCount
 
     AutoClicker = vape.Categories.Combat:CreateModule({
     	Name = 'Auto Clicker',
     	Function = function(callback)
     		if callback then
     			repeat
-    				local shouldFire = not HoldActivate.Enabled or inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-    				if shouldFire then
-    					if Mode.Value == 'Tool' then
-    						local tool = getTool()
-    						if tool and inputService:IsMouseButtonPressed(0) then
-    							for _ = 1, BurstCount.Value do
-    								tool:Activate()
-    								if BurstCount.Value > 1 then task.wait(0.03) end
-    							end
-    						end
-    					else
-    						if mouse1click and (isrbxactive or iswindowactive)() then
-    							if not vape.gui.ScaledGui.ClickGui.Visible then
-    								local clickFn = Mode.Value == 'Click' and mouse1click or mouse2click
-    								for _ = 1, BurstCount.Value do
-    									clickFn()
-    									if BurstCount.Value > 1 then task.wait(0.03) end
-    								end
-    							end
+    				if Mode.Value == 'Tool' then
+    					local tool = getTool()
+    					if tool and inputService:IsMouseButtonPressed(0) then
+    						tool:Activate()
+    					end
+    				else
+    					if mouse1click and (isrbxactive or iswindowactive)() then
+    						if not vape.gui.ScaledGui.ClickGui.Visible then
+    							(Mode.Value == 'Click' and mouse1click or mouse2click)()
     						end
     					end
     				end
@@ -2030,20 +2018,9 @@ run(function()
     CPS = AutoClicker:CreateTwoSlider({
     	Name = 'CPS',
     	Min = 1,
-    	Max = 30,
+    	Max = 20,
     	DefaultMin = 8,
     	DefaultMax = 12,
-    })
-    HoldActivate = AutoClicker:CreateToggle({
-    	Name = 'Hold to activate',
-    	Tooltip = 'Only clicks while you are holding left mouse button',
-    })
-    BurstCount = AutoClicker:CreateSlider({
-    	Name = 'Burst count',
-    	Min = 1,
-    	Max = 5,
-    	Default = 1,
-    	Tooltip = 'Number of clicks fired per interval (burst clicking)',
     })
 end)
 
