@@ -18118,54 +18118,51 @@ run(function()
     local FullCharge
     local Delay
 
+    local Balance = bedwars.LumenBalance or {MIN_CHARGE_TIME = 0.65, MAX_CHARGE_TIME = 1.25}
     local Sword = 'light_sword'
     local cooldown = 0
 
-    local AttackRemote = {FireServer = function(self, ...) end}
-    task.spawn(function()
-        AttackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
-    end)
-
-    -- 0..1 charge fraction to report. The lumen only releases its beam on a (near) full
-    -- charge, so Full charge sends 1; otherwise send the sword's min-charge fraction.
-    local function chargeRatio()
-        if FullCharge.Enabled then return 1 end
+    local function getChargeTime()
         local itemmeta = bedwars.ItemMeta[Sword]
         local charged = itemmeta and itemmeta.sword and itemmeta.sword.chargedAttack
-        if charged and charged.minChargeTimeSec and charged.maxChargeTimeSec and charged.maxChargeTimeSec > 0 then
-            return charged.minChargeTimeSec / charged.maxChargeTimeSec
-        end
-        return 1
+        local minimum = charged and charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME
+        local maximum = charged and charged.maxChargeTimeSec or Balance.MAX_CHARGE_TIME
+        return FullCharge.Enabled and maximum or minimum
     end
 
-    local function chargedSwing(target)
+    local function chargedSwing()
+        -- bedwars auto-resolves unknown keys to Knit.Controllers, so SwordChargeController is
+        -- the real game controller (its getChargeState() worked). The earlier crash was only
+        -- bedwars.ChargeState -- that's an enum, not a controller, so it's nil here. Idle ==
+        -- getChargeStartTime() being 0, so use that as the guard instead of the missing enum.
+        local charge = bedwars.SwordChargeController
+        if not charge then return end
+        if charge:getChargeStartTime() ~= 0 then return end
+
+        charge:startCharging(Sword)
+        local started = charge:getChargeStartTime()
+        if started == 0 then return end
+
+        local target = getChargeTime() + 0.05
+        repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
+
+        local chargeTime = tick() - started
+        charge:stopCharging(Sword)
+        if not AutoLumen.Enabled or not entitylib.isAlive then return end
+
         local tool = store.hand.tool
         if not tool or tool.Name ~= Sword then return end
-        local root = target.RootPart or (target.Character and target.Character.PrimaryPart)
-        if not root then return end
 
-        -- This build has no SwordChargeController/ChargeState state machine (indexing them
-        -- threw "attempt to index nil with 'Idle'"), and a plain swingSwordAtMouse only does
-        -- a normal melee swing -- it never releases the lumen wave. Instead we send a charged
-        -- attack straight to the server via the AttackEntity remote (the same one the killaura
-        -- uses), with chargeRatio high enough to fire the beam.
-        local selfpos = entitylib.character.RootPart.Position
-        local dir = CFrame.lookAt(selfpos, root.Position).LookVector
+        local charged = bedwars.ItemMeta[Sword] and bedwars.ItemMeta[Sword].sword and bedwars.ItemMeta[Sword].sword.chargedAttack
+        if not (charged and charged.skipSwingDamage and chargeTime > (charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME)) then
+            bedwars.SwordController:swingSwordAtMouse(chargeTime)
+        end
 
-        bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
-        AttackRemote:FireServer({
-            weapon = tool,
-            chargedAttack = {chargeRatio = chargeRatio()},
-            entityInstance = target.Character,
-            validate = {
-                raycast = {
-                    cameraPosition = {value = selfpos},
-                    cursorDirection = {value = dir}
-                },
-                targetPosition = {value = root.Position},
-                selfPosition = {value = selfpos}
-            }
-        })
+        -- Releasing the charged swing is what fires the lumen wave; guard the event in case
+        -- this build names it differently, so a missing event never crashes the module.
+        if bedwars.SyncEvents and bedwars.SyncEvents.SwordChargedSwing then
+            bedwars.SyncEvents.SwordChargedSwing:fire(lplr, tool, {chargeTime = chargeTime})
+        end
         cooldown = tick() + Delay.Value
     end
 
@@ -18187,7 +18184,7 @@ run(function()
                         })
 
                         if target then
-                            chargedSwing(target)
+                            chargedSwing()
                         end
                     end
                     task.wait(0.1)
