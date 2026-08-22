@@ -1215,7 +1215,7 @@ run(function()
 		end
 	end
 
-	bedwars.breakBlock = function(block, effects, anim, customHealthbar, visualise, sort, angle, wallcheck, keepTarget)
+	bedwars.breakBlock = function(block, effects, anim, customHealthbar, visualise, sort, angle, wallcheck, keepTarget, noSwitch)
 		if lplr:GetAttribute('DenyBlockBreak') or not entitylib.isAlive or InfiniteFly.Enabled then return end
 
 		local handler = bedwars.BlockController:getHandlerRegistry():getHandler(block.Name)
@@ -1234,7 +1234,7 @@ run(function()
 			if not dblock then return end
 			if keepTarget and dblock == block then return end
 
-			if (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) > 0.4 then
+			if not noSwitch and (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) > 0.4 then
 				local breaktype = dblock.Name == 'gumdrop_bounce_pad' and 'stone' or bedwars.ItemMeta[dblock.Name].block.breakType
 				local tool = store.tools[breaktype]
 				if tool then
@@ -15405,7 +15405,15 @@ run(function()
         return false
     end
 
-    local function attemptBreak(tab, localPosition, visGate)
+    -- True only when the currently held tool can actually break this block (e.g. a pickaxe for iron ore).
+    local function holdingToolFor(block)
+        local meta = bedwars.ItemMeta[block.Name]
+        local breaktype = meta and meta.block and meta.block.breakType
+        local heldMeta = store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name]
+        return breaktype and heldMeta and heldMeta.breakBlock and (heldMeta.breakBlock[breaktype] or 0) > 0
+    end
+
+    local function attemptBreak(tab, localPosition, visGate, heldOnly)
         if not tab then return end
         if visGate then refreshFilter() end
         for _, v in tab do
@@ -15413,11 +15421,13 @@ run(function()
                 if not SelfBreak.Enabled and v:GetAttribute('PlacedByUserId') == lplr.UserId then continue end
                 if (v:GetAttribute('BedShieldEndTime') or 0) > workspace:GetServerTimeNow() then continue end
                 if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then continue end
+                -- Iron ore: never force-swap to the pickaxe; only mine while it is already in hand.
+                if heldOnly and not holdingToolFor(v) then continue end
     
                 hit = hit + 1
                 -- Only break the target bed itself once it is visible from the camera; until then just clear its defense.
                 local keepTarget = visGate and not isBedVisible(v)
-                local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, breakmethods[Mode.Value], Angle.Value, true, keepTarget)
+                local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, breakmethods[Mode.Value], Angle.Value, true, keepTarget, heldOnly)
                 if path then
                     local currentnode = target
                     for _, part in parts do
@@ -15514,7 +15524,7 @@ run(function()
                                         table.insert(baseOres, ore)
                                     end
                                 end
-                                if attemptBreak(baseOres, localPosition) then continue end
+                                if attemptBreak(baseOres, localPosition, nil, true) then continue end
                             end
                         end
     
