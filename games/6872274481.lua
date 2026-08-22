@@ -18133,10 +18133,19 @@ run(function()
     -- DEBUG: spy on everything when you manually do a charged lumen swing
     local spyLog = {}
     local spyActive = false
+    local spyFile = 'lumen_spy.txt'
     local function slog(msg)
         local entry = string.format("[LumenSpy %.2f] %s", tick() % 1000, tostring(msg))
         table.insert(spyLog, entry)
         warn(entry)
+        pcall(function()
+            appendfile(spyFile, entry .. '\n')
+        end)
+        pcall(function()
+            if not appendfile then
+                writefile(spyFile, table.concat(spyLog, '\n'))
+            end
+        end)
     end
 
     local function installSpy()
@@ -18236,10 +18245,12 @@ run(function()
     end
 
     local function chargedSwing()
-        -- don't actually swing, just copy the spy log
+        -- don't actually swing, just save and copy the spy log
         if #spyLog > 0 then
-            pcall(function() setclipboard(table.concat(spyLog, '\n')) end)
-            warn("[LumenSpy] Log copied to clipboard! (" .. #spyLog .. " lines)")
+            local text = table.concat(spyLog, '\n')
+            pcall(function() writefile(spyFile, text) end)
+            pcall(function() setclipboard(text) end)
+            warn("[LumenSpy] Log saved to " .. spyFile .. " and copied to clipboard (" .. #spyLog .. " lines)")
             spyLog = {}
         end
     end
