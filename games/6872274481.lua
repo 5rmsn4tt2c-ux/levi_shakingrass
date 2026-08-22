@@ -18130,7 +18130,7 @@ run(function()
         return FullCharge.Enabled and maximum or minimum
     end
 
-    -- DEBUG: spy on everything when you manually do a charged lumen swing
+    -- DEBUG: hook the actual RemoteEvent to see what goes to the server
     local spyLog = {}
     local spyActive = false
     local spyFile = 'lumen_spy.txt'
@@ -18138,119 +18138,101 @@ run(function()
         local entry = string.format("[LumenSpy %.2f] %s", tick() % 1000, tostring(msg))
         table.insert(spyLog, entry)
         warn(entry)
-        pcall(function()
-            appendfile(spyFile, entry .. '\n')
-        end)
-        pcall(function()
-            if not appendfile then
-                writefile(spyFile, table.concat(spyLog, '\n'))
+        pcall(function() appendfile(spyFile, entry .. '\n') end)
+        pcall(function() if not appendfile then writefile(spyFile, table.concat(spyLog, '\n')) end end)
+    end
+
+    local function deepLog(tbl, prefix, depth)
+        depth = depth or 0
+        if depth > 3 then slog(prefix .. "...") return end
+        for k, v in pairs(tbl) do
+            local key = prefix .. tostring(k)
+            if type(v) == 'table' then
+                slog(key .. " = {")
+                deepLog(v, key .. ".", depth + 1)
+                slog(key .. " }")
+            else
+                slog(key .. " = " .. tostring(v) .. " (" .. typeof(v) .. ")")
             end
-        end)
+        end
     end
 
     local function installSpy()
         if spyActive then return end
         spyActive = true
-        local charge = bedwars.SwordChargeController
+
+        -- hook the ACTUAL RemoteEvent FireServer
+        pcall(function()
+            local attackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
+            slog("Attack remote found: " .. tostring(attackRemote) .. " (" .. attackRemote.ClassName .. ")")
+            local origFire = attackRemote.FireServer
+            attackRemote.FireServer = function(self, ...)
+                slog(">>> REMOTE FireServer called")
+                local args = {...}
+                for i, arg in ipairs(args) do
+                    if type(arg) == 'table' then
+                        slog("  arg" .. i .. ":")
+                        deepLog(arg, "    ", 0)
+                    else
+                        slog("  arg" .. i .. " = " .. tostring(arg) .. " (" .. typeof(arg) .. ")")
+                    end
+                end
+                return origFire(self, ...)
+            end
+        end)
+
+        -- also hook any InvokeServer on RemoteFunctions
+        pcall(function()
+            local attackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
+            if attackRemote.InvokeServer then
+                local origInvoke = attackRemote.InvokeServer
+                attackRemote.InvokeServer = function(self, ...)
+                    slog(">>> REMOTE InvokeServer called")
+                    local args = {...}
+                    for i, arg in ipairs(args) do
+                        if type(arg) == 'table' then
+                            slog("  arg" .. i .. ":")
+                            deepLog(arg, "    ", 0)
+                        else
+                            slog("  arg" .. i .. " = " .. tostring(arg) .. " (" .. typeof(arg) .. ")")
+                        end
+                    end
+                    return origInvoke(self, ...)
+                end
+            end
+        end)
+
+        -- hook swingSwordAtMouse to see when it's called
         local sc = bedwars.SwordController
-
-        -- hook startCharging
-        local origStart = charge.startCharging
-        charge.startCharging = function(self, ...)
-            slog(">>> startCharging(" .. table.concat({...}, ", ") .. ")")
-            slog("  chargeState before: " .. tostring(self.chargeState))
-            local ret = origStart(self, ...)
-            slog("  chargeState after: " .. tostring(self.chargeState))
-            slog("  chargeStartTime: " .. tostring(self.chargeStartTime))
-            slog("  chargeTime: " .. tostring(self.chargeTime))
-            return ret
-        end
-
-        -- hook stopCharging
-        local origStop = charge.stopCharging
-        charge.stopCharging = function(self, ...)
-            slog(">>> stopCharging(" .. table.concat({...}, ", ") .. ")")
-            slog("  chargeState before: " .. tostring(self.chargeState))
-            slog("  chargeTime: " .. tostring(self.chargeTime))
-            slog("  chargeStartTime: " .. tostring(self.chargeStartTime))
-            local ret = origStop(self, ...)
-            slog("  chargeState after: " .. tostring(self.chargeState))
-            return ret
-        end
-
-        -- hook swingSwordAtMouse
         local origSwing = sc.swingSwordAtMouse
         sc.swingSwordAtMouse = function(self, ...)
             local args = {...}
             slog(">>> swingSwordAtMouse(" .. table.concat(args, ", ") .. ")")
-            slog("  chargeState: " .. tostring(charge.chargeState))
-            slog("  chargeTime: " .. tostring(charge.chargeTime))
-            slog("  lastAttack: " .. tostring(self.lastAttack))
-            if self.lastChargedAttackTimeMap then
-                for k, v in pairs(self.lastChargedAttackTimeMap) do
-                    slog("  lastChargedAttack[" .. tostring(k) .. "]: " .. tostring(v))
-                end
-            end
             local ret = origSwing(self, ...)
-            slog("  after swing - lastAttack: " .. tostring(self.lastAttack))
-            if self.lastChargedAttackTimeMap then
-                for k, v in pairs(self.lastChargedAttackTimeMap) do
-                    slog("  after lastChargedAttack[" .. tostring(k) .. "]: " .. tostring(v))
-                end
-            end
+            slog("<<< swingSwordAtMouse done")
             return ret
         end
 
-        -- hook sendServerRequest
-        local origSend = sc.sendServerRequest
-        if origSend then
-            sc.sendServerRequest = function(self, ...)
-                local args = {...}
-                slog(">>> sendServerRequest called")
-                for i, arg in ipairs(args) do
-                    if type(arg) == 'table' then
-                        for k, v in pairs(arg) do
-                            if type(v) == 'table' then
-                                local sub = {}
-                                for sk, sv in pairs(v) do
-                                    table.insert(sub, tostring(sk) .. "=" .. tostring(sv))
-                                end
-                                slog("  arg" .. i .. "." .. tostring(k) .. " = {" .. table.concat(sub, ", ") .. "}")
-                            else
-                                slog("  arg" .. i .. "." .. tostring(k) .. " = " .. tostring(v))
-                            end
-                        end
-                    else
-                        slog("  arg" .. i .. " = " .. tostring(arg))
-                    end
-                end
-                return origSend(self, ...)
-            end
+        -- hook stopCharging
+        local charge = bedwars.SwordChargeController
+        local origStop = charge.stopCharging
+        charge.stopCharging = function(self, ...)
+            slog(">>> stopCharging - state: " .. tostring(self.chargeState))
+            local ret = origStop(self, ...)
+            slog("<<< stopCharging - state: " .. tostring(self.chargeState))
+            return ret
         end
 
-        -- hook updateChargeState
-        local origUpdate = charge.updateChargeState
-        if origUpdate then
-            charge.updateChargeState = function(self, ...)
-                local args = {...}
-                slog(">>> updateChargeState(" .. table.concat(args, ", ") .. ")")
-                slog("  chargeState before: " .. tostring(self.chargeState))
-                local ret = origUpdate(self, ...)
-                slog("  chargeState after: " .. tostring(self.chargeState))
-                return ret
-            end
-        end
-
-        slog("=== SPY INSTALLED - do a manual charged lumen swing now ===")
+        slog("=== SPY V2 INSTALLED - hook on actual remote ===")
+        slog("=== Do a manual charged lumen swing now ===")
     end
 
     local function chargedSwing()
-        -- don't actually swing, just save and copy the spy log
         if #spyLog > 0 then
             local text = table.concat(spyLog, '\n')
             pcall(function() writefile(spyFile, text) end)
             pcall(function() setclipboard(text) end)
-            warn("[LumenSpy] Log saved to " .. spyFile .. " and copied to clipboard (" .. #spyLog .. " lines)")
+            warn("[LumenSpy] Log saved to " .. spyFile .. " (" .. #spyLog .. " lines)")
             spyLog = {}
         end
     end
