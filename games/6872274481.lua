@@ -15361,11 +15361,53 @@ run(function()
             Size = UDim2.fromScale(newpercent, 1), BackgroundColor3 = Color3.fromHSV(math.clamp(newpercent / 2.5, 0, 1), 0.89, 0.75)
         }):Play()
     end
-    
+
     local hit = 0
-    
-    local function attemptBreak(tab, localPosition, keepTarget)
+
+    local losFilter
+    local function refreshFilter()
+        if not losFilter then
+            losFilter = RaycastParams.new()
+            losFilter.FilterType = Enum.RaycastFilterType.Include
+            losFilter.RespectCanCollide = false
+        end
+        local list = {}
+        for _, b in store.blocks do
+            if b and b.Parent then table.insert(list, b) end
+        end
+        losFilter.FilterDescendantsInstances = list
+    end
+
+    local function isVisible(worldPos)
+        local eye = gameCamera.CFrame.Position
+        for _, off in {
+            Vector3.zero,
+            Vector3.new(1.35, 0, 0), Vector3.new(-1.35, 0, 0),
+            Vector3.new(0, 1.35, 0), Vector3.new(0, -1.35, 0),
+            Vector3.new(0, 0, 1.35), Vector3.new(0, 0, -1.35)
+        } do
+            local probe = worldPos + off
+            local ray = probe - eye
+            local res = workspace:Raycast(eye, ray, losFilter)
+            if not res then return true end
+            if (res.Position - eye).Magnitude >= ray.Magnitude - 1.5 then return true end
+            if res.Instance and (res.Instance.Position - worldPos).Magnitude < 2.5 then return true end
+        end
+        return false
+    end
+
+    local function isBedVisible(bed)
+        local handler = bedwars.BlockController:getHandlerRegistry():getHandler(bed.Name)
+        local positions = handler and handler:getContainedPositions(bed) or {bed.Position / 3}
+        for _, gridPos in positions do
+            if isVisible(gridPos * 3) then return true end
+        end
+        return false
+    end
+
+    local function attemptBreak(tab, localPosition, visGate)
         if not tab then return end
+        if visGate then refreshFilter() end
         for _, v in tab do
             if (v.Position - localPosition).Magnitude < Range.Value and bedwars.BlockController:isBlockBreakable({blockPosition = v.Position / 3}, lplr) then
                 if not SelfBreak.Enabled and v:GetAttribute('PlacedByUserId') == lplr.UserId then continue end
@@ -15373,6 +15415,8 @@ run(function()
                 if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then continue end
     
                 hit = hit + 1
+                -- Only break the target bed itself once it is visible from the camera; until then just clear its defense.
+                local keepTarget = visGate and not isBedVisible(v)
                 local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, breakmethods[Mode.Value], Angle.Value, true, keepTarget)
                 if path then
                     local currentnode = target
