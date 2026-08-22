@@ -18131,29 +18131,14 @@ run(function()
     end
 
     local function chargedSwing()
-        local charge = bedwars.SwordChargeController
-        if charge:getChargeState() ~= bedwars.ChargeState.Idle then return end
-
-        charge:startCharging(Sword)
-        local started = charge:getChargeStartTime()
-        if started == 0 then return end
-
-        local target = getChargeTime() + 0.05
-        repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
-
-        local chargeTime = tick() - started
-        charge:stopCharging(Sword)
-        if not AutoLumen.Enabled or not entitylib.isAlive then return end
-
         local tool = store.hand.tool
         if not tool or tool.Name ~= Sword then return end
 
-        local charged = bedwars.ItemMeta[Sword].sword.chargedAttack
-        if not (charged.skipSwingDamage and chargeTime > (charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME)) then
-            bedwars.SwordController:swingSwordAtMouse(chargeTime)
-        end
-
-        bedwars.SyncEvents.SwordChargedSwing:fire(lplr, tool, {chargeTime = chargeTime})
+        -- This game build has no SwordChargeController/ChargeState state machine (indexing
+        -- them threw "attempt to index nil with 'Idle'"). A charged swing is performed
+        -- directly via swingSwordAtMouse(chargeTime) -- the same call the autoclicker uses
+        -- for swords -- where chargeTime is the seconds-of-charge reported to the server.
+        bedwars.SwordController:swingSwordAtMouse(getChargeTime())
         cooldown = tick() + Delay.Value
     end
 
