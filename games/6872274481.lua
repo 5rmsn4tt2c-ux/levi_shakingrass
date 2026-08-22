@@ -15228,7 +15228,6 @@ run(function()
     local SelfBreak
     local InstantBreak
     local LimitItem
-    local KeepBed
     local customlist, parts = {}, {}
     
     local function customHealthbar(self, blockRef, health, maxHealth, changeHealth, block)
@@ -15416,7 +15415,7 @@ run(function()
                     if entitylib.isAlive then
                         local localPosition = entitylib.character.RootPart.Position
     
-                        if attemptBreak(Bed.Enabled and beds, localPosition, KeepBed.Enabled) then continue end
+                        if attemptBreak(Bed.Enabled and beds, localPosition, true) then continue end
                         if attemptBreak(Tesla.Enabled and teslas, localPosition) then continue end
                         if attemptBreak(Hive.Enabled and hives, localPosition) then continue end
                         if attemptBreak(customlist, localPosition) then continue end
@@ -15512,10 +15511,6 @@ run(function()
     Bed = Breaker:CreateToggle({
         Name = 'Break Bed',
         Default = true
-    })
-    KeepBed = Breaker:CreateToggle({
-        Name = 'Don\'t break bed',
-        Tooltip = 'Paths to the bed and clears the defense around it, but leaves the bed itself intact'
     })
     Tesla = Breaker:CreateToggle({
     	Name = 'Break Tesla',
