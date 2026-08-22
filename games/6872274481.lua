@@ -1215,7 +1215,7 @@ run(function()
 		end
 	end
 
-	bedwars.breakBlock = function(block, effects, anim, customHealthbar, visualise, sort, angle, wallcheck)
+	bedwars.breakBlock = function(block, effects, anim, customHealthbar, visualise, sort, angle, wallcheck, keepTarget)
 		if lplr:GetAttribute('DenyBlockBreak') or not entitylib.isAlive or InfiniteFly.Enabled then return end
 
 		local handler = bedwars.BlockController:getHandlerRegistry():getHandler(block.Name)
@@ -1232,6 +1232,7 @@ run(function()
 			if (entitylib.character.RootPart.Position - pos).Magnitude > 30 then return end
 			local dblock, dpos = getPlacedBlock(pos)
 			if not dblock then return end
+			if keepTarget and dblock == block then return end
 
 			if (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) > 0.4 then
 				local breaktype = dblock.Name == 'gumdrop_bounce_pad' and 'stone' or bedwars.ItemMeta[dblock.Name].block.breakType
@@ -15227,6 +15228,7 @@ run(function()
     local SelfBreak
     local InstantBreak
     local LimitItem
+    local KeepBed
     local customlist, parts = {}, {}
     
     local function customHealthbar(self, blockRef, health, maxHealth, changeHealth, block)
@@ -15331,7 +15333,7 @@ run(function()
     
     local hit = 0
     
-    local function attemptBreak(tab, localPosition)
+    local function attemptBreak(tab, localPosition, keepTarget)
         if not tab then return end
         for _, v in tab do
             if (v.Position - localPosition).Magnitude < Range.Value and bedwars.BlockController:isBlockBreakable({blockPosition = v.Position / 3}, lplr) then
@@ -15340,7 +15342,7 @@ run(function()
                 if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then continue end
     
                 hit = hit + 1
-                local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, breakmethods[Mode.Value], Angle.Value, true)
+                local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, breakmethods[Mode.Value], Angle.Value, true, keepTarget)
                 if path then
                     local currentnode = target
                     for _, part in parts do
@@ -15414,7 +15416,7 @@ run(function()
                     if entitylib.isAlive then
                         local localPosition = entitylib.character.RootPart.Position
     
-                        if attemptBreak(Bed.Enabled and beds, localPosition) then continue end
+                        if attemptBreak(Bed.Enabled and beds, localPosition, KeepBed.Enabled) then continue end
                         if attemptBreak(Tesla.Enabled and teslas, localPosition) then continue end
                         if attemptBreak(Hive.Enabled and hives, localPosition) then continue end
                         if attemptBreak(customlist, localPosition) then continue end
@@ -15510,6 +15512,10 @@ run(function()
     Bed = Breaker:CreateToggle({
         Name = 'Break Bed',
         Default = true
+    })
+    KeepBed = Breaker:CreateToggle({
+        Name = 'Don\'t break bed',
+        Tooltip = 'Paths to the bed and clears the defense around it, but leaves the bed itself intact'
     })
     Tesla = Breaker:CreateToggle({
     	Name = 'Break Tesla',
