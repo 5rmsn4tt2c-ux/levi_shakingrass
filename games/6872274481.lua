@@ -4410,35 +4410,6 @@ run(function()
     			oldd = bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition
     			-- Resolver runs while PA is on; it no-ops unless Debug Log captured shots.
     			ProjectileAimbot:Clean(runService.Heartbeat:Connect(paDebugResolve))
-    			-- Lumen sword wave aim: runs on PostSimulation, aims camera at
-    			-- predicted target position so swingSwordAtMouse fires correctly
-    			ProjectileAimbot:Clean(runService.PostSimulation:Connect(function()
-    				if not entitylib.isAlive then return end
-    				if not store.hand.tool or store.hand.tool.Name ~= 'light_sword' then return end
-    				if store.equippedKit ~= 'lumen' then return end
-    				local plr = entitylib.EntityMouse({
-    					Part = 'RootPart',
-    					Range = FOV.Value,
-    					Players = Targets.Players.Enabled,
-    					NPCs = Targets.NPCs.Enabled,
-    					Wallcheck = Targets.Walls.Enabled,
-    					Sort = sortmethods[Sort.Value or 'Distance'],
-    					Origin = entitylib.character.RootPart.Position,
-    				})
-    				if plr and plr.RootPart then
-    					local origin = entitylib.character.RootPart.Position
-    					local targetPos = plr.RootPart.Position
-    					local dist = (targetPos - origin).Magnitude
-    					-- Read wave speed from game data; fall back to 60 studs/s
-    					local meta = bedwars.ItemMeta and bedwars.ItemMeta['light_sword']
-    					local waveSpeed = (meta and meta.sword and meta.sword.chargedAttack and meta.sword.chargedAttack.waveSpeed) or 60
-    					local travelTime = dist / waveSpeed
-    					-- Lead target: wave has no gravity so it's straight velocity-only lead
-    					local predicted = targetPos + plr.RootPart.Velocity * travelTime
-    					gameCamera.CFrame = CFrame.lookAt(gameCamera.CFrame.Position, predicted)
-    					targetinfo.Targets[plr] = tick() + 1
-    				end
-    			end))
     			launchHook = bedwars.ProjectileLaunchHook:Add('ProjectileAimbot', 100, function(nextLaunch, ...)
     				local self, projmeta, worldmeta, origin, shootpos = ...
     				local plr = entitylib.EntityMouse({
@@ -18173,7 +18144,7 @@ run(function()
         return FullCharge.Enabled and maximum or minimum
     end
 
-    local function chargedSwing(ent)
+    local function chargedSwing()
         local charge = bedwars.SwordChargeController
         if charge:getChargeState() ~= bedwars.ChargeState.Idle then return end
 
@@ -18181,14 +18152,8 @@ run(function()
         local started = charge:getChargeStartTime()
         if started == 0 then return end
 
-        local chargeTarget = getChargeTime() + 0.05
-        repeat
-            task.wait()
-            -- lock camera onto target while charging so swingSwordAtMouse fires the right way
-            if ent and ent.RootPart and ent.RootPart.Parent then
-                gameCamera.CFrame = CFrame.lookAt(gameCamera.CFrame.Position, ent.RootPart.Position)
-            end
-        until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= chargeTarget
+        local target = getChargeTime() + 0.05
+        repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
 
         local chargeTime = tick() - started
         charge:stopCharging(Sword)
@@ -18196,11 +18161,6 @@ run(function()
 
         local tool = store.hand.tool
         if not tool or tool.Name ~= Sword then return end
-
-        -- final aim snap right before swing
-        if ent and ent.RootPart and ent.RootPart.Parent then
-            gameCamera.CFrame = CFrame.lookAt(gameCamera.CFrame.Position, ent.RootPart.Position)
-        end
 
         local charged = bedwars.ItemMeta[Sword].sword.chargedAttack
         if not (charged.skipSwingDamage and chargeTime > (charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME)) then
@@ -18219,7 +18179,7 @@ run(function()
 
                 repeat
                     if entitylib.isAlive and store.equippedKit == 'lumen' and store.hand.tool and store.hand.tool.Name == Sword and tick() >= cooldown then
-                        local target = entitylib.EntityPosition({
+                        local target = entitylib.EntityMouse({
                             Origin = entitylib.character.RootPart.Position,
                             Range = Range.Value,
                             Part = 'RootPart',
@@ -18229,14 +18189,14 @@ run(function()
                         })
 
                         if target then
-                            chargedSwing(target)
+                            chargedSwing()
                         end
                     end
                     task.wait(0.1)
                 until not AutoLumen.Enabled
             end
         end,
-        Tooltip = 'Charges the sword of light and releases a wave whenever an enemy is in range, automatically aims at the nearest target'
+        Tooltip = 'Charges the sword of light and releases a wave whenever an enemy is in front of you, Killaura skips this sword because it has a charged attack'
     })
     Targets = AutoLumen:CreateTargets({
         Players = true,
