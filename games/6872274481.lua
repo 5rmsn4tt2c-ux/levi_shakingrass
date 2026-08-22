@@ -4135,6 +4135,8 @@ run(function()
     local Targets
     local FOV
     local Sort
+    local Horizontal
+    local Vertical
     local OtherProjectiles
     local Blacklist
     local rayCheck = RaycastParams.new()
@@ -4448,7 +4450,21 @@ run(function()
     					-- Pass the target's RootPart so the prediction library can learn its per-target
     					-- motion (strafe/turn/jump/knockback) and apply latency compensation internally.
     					-- targetpos stays the aim part; the library derives the aim/root offset itself.
-    					local calc, predImpact, predTime = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos, projmeta.projectile == 'telepearl' and Vector3.zero or plr.RootPart.Velocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, nil, plr.RootPart)
+    					local targetVelocity = projmeta.projectile == 'telepearl' and Vector3.zero or plr.RootPart.Velocity
+    					local calc, predImpact, predTime = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos, targetVelocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, nil, plr.RootPart)
+    					-- Directional prediction: independently scale how far we lead the target
+    					-- sideways (Horizontal, the X/Z plane) vs while it rises or falls (Vertical, Y).
+    					-- 1 = the solver's own lead, <1 under-leads that axis, >1 over-leads it. We
+    					-- offset the aim point by the extra/less lead over the solved travel time and
+    					-- re-solve so gravity is recomputed for the new point.
+    					if calc and predTime and (Horizontal.Value ~= 1 or Vertical.Value ~= 1) then
+    						local lead = Vector3.new(
+    							targetVelocity.X * (Horizontal.Value - 1),
+    							targetVelocity.Y * (Vertical.Value - 1),
+    							targetVelocity.Z * (Horizontal.Value - 1)
+    						) * predTime
+    						calc = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos + lead, targetVelocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, nil, plr.RootPart) or calc
+    					end
     					if calc then
     						if PADebug and PADebug.Enabled then
     							paDebugCapture(plr, offsetpos, targetpos, predImpact, predTime, projmeta)
@@ -4506,6 +4522,22 @@ run(function()
     	Min = 1,
     	Max = 1000,
     	Default = 1000,
+    })
+    Horizontal = ProjectileAimbot:CreateSlider({
+    	Name = 'Horizontal prediction',
+    	Min = 0,
+    	Max = 2,
+    	Default = 1,
+    	Decimal = 100,
+    	Tooltip = 'Scales how far ahead of the target you aim sideways',
+    })
+    Vertical = ProjectileAimbot:CreateSlider({
+    	Name = 'Vertical prediction',
+    	Min = 0,
+    	Max = 2,
+    	Default = 1,
+    	Decimal = 100,
+    	Tooltip = 'Scales how far ahead of the target you aim while it rises or falls',
     })
     AutoCharge = ProjectileAimbot:CreateToggle({
     	Name = 'Auto Charge',
