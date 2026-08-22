@@ -1775,6 +1775,31 @@ run(function()
     local MobileDutyCycle
     local MobileThread
 
+    -- Places a block at the position the player is currently aiming at, using the
+    -- block APIs that actually exist in this file. The old code indexed
+    -- bedwars.BlockPlacementController / BlockCpsController / KnockbackController,
+    -- none of which are defined here, so it errored ("attempt to index nil") and
+    -- the building autoclicker never placed anything.
+    local function placeBlockAtAim()
+        if store.hand.toolType ~= 'block' then return end
+        local item = store.hand.tool and store.hand.tool.Name
+        if not item then return end
+
+        local suc, mouseinfo = pcall(function()
+            return bedwars.BlockBreaker.clientManager:getBlockSelector():getMouseInfo(0)
+        end)
+        if not suc or not mouseinfo then return end
+
+        local placePos = mouseinfo.placementPosition
+        -- placePos ~= placePos rejects a NaN placement position.
+        if not placePos or placePos ~= placePos then return end
+
+        local worldPos = placePos * 3
+        if getPlacedBlock(worldPos) then return end
+
+        bedwars.placeBlock(worldPos, item)
+    end
+
     local function MobileClick()
         if MobileThread then
             task.cancel(MobileThread)
@@ -1784,15 +1809,7 @@ run(function()
             repeat
                 if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
                     if store.hand.toolType == 'block' then
-                        local blockPlacer = bedwars.BlockPlacementController.blockPlacer
-                        if blockPlacer and canDebug then
-                            task.spawn(function()
-                                blockPlacer:autoBridge(
-                                    workspace:GetServerTimeNow() - bedwars.KnockbackController:getLastKnockbackTime()
-                                        >= 0.2
-                                )
-                            end)
-                        end
+                        task.spawn(placeBlockAtAim)
                     elseif store.hand.toolType == 'sword' then
                         bedwars.SwordController:swingSwordAtMouse(0.39)
                     end
@@ -1813,37 +1830,8 @@ run(function()
     	Thread = task.delay(1 / (store.hand.toolType == 'block' and BlockCPS or CPS).GetRandomValue(), function()
     		repeat
     			if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
-    				local blockPlacer = bedwars.BlockPlacementController.blockPlacer
-    				if store.hand.toolType == 'block' and blockPlacer then
-    					if canDebug then
-    						if inputService.TouchEnabled then
-    							task.spawn(function()
-    								blockPlacer:autoBridge(
-    									workspace:GetServerTimeNow() - bedwars.KnockbackController:getLastKnockbackTime()
-    										>= 0.2
-    								)
-    							end)
-    						else
-    							if
-    								(workspace:GetServerTimeNow() - bedwars.BlockCpsController.lastPlaceTimestamp)
-    								>= ((1 / 12) * 0.5)
-    							then
-    								local mouseinfo
-    								if canDebug then
-    									mouseinfo = blockPlacer.clientManager:getBlockSelector():getMouseInfo(0)
-    								else
-    									mouseinfo = { placementPosition = lplr:GetMouse().Hit.Position }
-    								end
-    								if mouseinfo and mouseinfo.placementPosition == mouseinfo.placementPosition then
-    									if canDebug then
-    										task.spawn(blockPlacer.placeBlock, blockPlacer, mouseinfo.placementPosition)
-    									else
-    										bedwars.placeBlock(({ getPlacedBlock(mouseinfo.placementPosition) })[2])
-    									end
-    								end
-    							end
-    						end
-    					end
+    				if store.hand.toolType == 'block' then
+    					task.spawn(placeBlockAtAim)
     				elseif store.hand.toolType == 'sword' then
     					bedwars.SwordController:swingSwordAtMouse(0.39)
     				end
@@ -4148,6 +4136,8 @@ run(function()
     local Targets
     local FOV
     local Sort
+    local Horizontal
+    local Vertical
     local OtherProjectiles
     local Blacklist
     local rayCheck = RaycastParams.new()
@@ -4461,7 +4451,21 @@ run(function()
     					-- Pass the target's RootPart so the prediction library can learn its per-target
     					-- motion (strafe/turn/jump/knockback) and apply latency compensation internally.
     					-- targetpos stays the aim part; the library derives the aim/root offset itself.
-    					local calc, predImpact, predTime = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos, projmeta.projectile == 'telepearl' and Vector3.zero or plr.RootPart.Velocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, nil, plr.RootPart)
+    					local targetVelocity = projmeta.projectile == 'telepearl' and Vector3.zero or plr.RootPart.Velocity
+    					local calc, predImpact, predTime = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos, targetVelocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, nil, plr.RootPart)
+    					-- Directional prediction: independently scale how far we lead the target
+    					-- sideways (Horizontal, the X/Z plane) vs while it rises or falls (Vertical, Y).
+    					-- 1 = the solver's own lead, <1 under-leads that axis, >1 over-leads it. We
+    					-- offset the aim point by the extra/less lead over the solved travel time and
+    					-- re-solve so gravity is recomputed for the new point.
+    					if calc and predTime and (Horizontal.Value ~= 1 or Vertical.Value ~= 1) then
+    						local lead = Vector3.new(
+    							targetVelocity.X * (Horizontal.Value - 1),
+    							targetVelocity.Y * (Vertical.Value - 1),
+    							targetVelocity.Z * (Horizontal.Value - 1)
+    						) * predTime
+    						calc = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos + lead, targetVelocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, nil, plr.RootPart) or calc
+    					end
     					if calc then
     						if PADebug and PADebug.Enabled then
     							paDebugCapture(plr, offsetpos, targetpos, predImpact, predTime, projmeta)
@@ -4519,6 +4523,22 @@ run(function()
     	Min = 1,
     	Max = 1000,
     	Default = 1000,
+    })
+    Horizontal = ProjectileAimbot:CreateSlider({
+    	Name = 'Horizontal prediction',
+    	Min = 0,
+    	Max = 2,
+    	Default = 1,
+    	Decimal = 100,
+    	Tooltip = 'Scales how far ahead of the target you aim sideways',
+    })
+    Vertical = ProjectileAimbot:CreateSlider({
+    	Name = 'Vertical prediction',
+    	Min = 0,
+    	Max = 2,
+    	Default = 1,
+    	Decimal = 100,
+    	Tooltip = 'Scales how far ahead of the target you aim while it rises or falls',
     })
     AutoCharge = ProjectileAimbot:CreateToggle({
     	Name = 'Auto Charge',
