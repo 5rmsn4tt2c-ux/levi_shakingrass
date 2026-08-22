@@ -18132,7 +18132,7 @@ run(function()
 
     local function chargedSwing()
         local charge = bedwars.SwordChargeController
-        if charge:getChargeState() ~= bedwars.ChargeState.Idle then return end
+        if bedwars.ChargeState and charge:getChargeState() ~= bedwars.ChargeState.Idle then return end
 
         charge:startCharging(Sword)
         local started = charge:getChargeStartTime()
