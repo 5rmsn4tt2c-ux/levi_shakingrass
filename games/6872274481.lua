@@ -1774,6 +1774,31 @@ run(function()
     local MobileDutyCycle
     local MobileThread
 
+    -- Places a block at the position the player is currently aiming at, using the
+    -- block APIs that actually exist in this file. The old code indexed
+    -- bedwars.BlockPlacementController / BlockCpsController / KnockbackController,
+    -- none of which are defined here, so it errored ("attempt to index nil") and
+    -- the building autoclicker never placed anything.
+    local function placeBlockAtAim()
+        if store.hand.toolType ~= 'block' then return end
+        local item = store.hand.tool and store.hand.tool.Name
+        if not item then return end
+
+        local suc, mouseinfo = pcall(function()
+            return bedwars.BlockBreaker.clientManager:getBlockSelector():getMouseInfo(0)
+        end)
+        if not suc or not mouseinfo then return end
+
+        local placePos = mouseinfo.placementPosition
+        -- placePos ~= placePos rejects a NaN placement position.
+        if not placePos or placePos ~= placePos then return end
+
+        local worldPos = placePos * 3
+        if getPlacedBlock(worldPos) then return end
+
+        bedwars.placeBlock(worldPos, item)
+    end
+
     local function MobileClick()
         if MobileThread then
             task.cancel(MobileThread)
@@ -1783,15 +1808,7 @@ run(function()
             repeat
                 if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
                     if store.hand.toolType == 'block' then
-                        local blockPlacer = bedwars.BlockPlacementController.blockPlacer
-                        if blockPlacer and canDebug then
-                            task.spawn(function()
-                                blockPlacer:autoBridge(
-                                    workspace:GetServerTimeNow() - bedwars.KnockbackController:getLastKnockbackTime()
-                                        >= 0.2
-                                )
-                            end)
-                        end
+                        task.spawn(placeBlockAtAim)
                     elseif store.hand.toolType == 'sword' then
                         bedwars.SwordController:swingSwordAtMouse(0.39)
                     end
@@ -1812,37 +1829,8 @@ run(function()
     	Thread = task.delay(1 / (store.hand.toolType == 'block' and BlockCPS or CPS).GetRandomValue(), function()
     		repeat
     			if not bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
-    				local blockPlacer = bedwars.BlockPlacementController.blockPlacer
-    				if store.hand.toolType == 'block' and blockPlacer then
-    					if canDebug then
-    						if inputService.TouchEnabled then
-    							task.spawn(function()
-    								blockPlacer:autoBridge(
-    									workspace:GetServerTimeNow() - bedwars.KnockbackController:getLastKnockbackTime()
-    										>= 0.2
-    								)
-    							end)
-    						else
-    							if
-    								(workspace:GetServerTimeNow() - bedwars.BlockCpsController.lastPlaceTimestamp)
-    								>= ((1 / 12) * 0.5)
-    							then
-    								local mouseinfo
-    								if canDebug then
-    									mouseinfo = blockPlacer.clientManager:getBlockSelector():getMouseInfo(0)
-    								else
-    									mouseinfo = { placementPosition = lplr:GetMouse().Hit.Position }
-    								end
-    								if mouseinfo and mouseinfo.placementPosition == mouseinfo.placementPosition then
-    									if canDebug then
-    										task.spawn(blockPlacer.placeBlock, blockPlacer, mouseinfo.placementPosition)
-    									else
-    										bedwars.placeBlock(({ getPlacedBlock(mouseinfo.placementPosition) })[2])
-    									end
-    								end
-    							end
-    						end
-    					end
+    				if store.hand.toolType == 'block' then
+    					task.spawn(placeBlockAtAim)
     				elseif store.hand.toolType == 'sword' then
     					bedwars.SwordController:swingSwordAtMouse(0.39)
     				end
