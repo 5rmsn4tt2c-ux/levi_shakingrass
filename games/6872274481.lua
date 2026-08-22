@@ -15405,6 +15405,21 @@ run(function()
         return false
     end
 
+    -- The placed block standing between the camera and the bed. Breaking it opens the sightline.
+    local function firstOccluder(bed)
+        local eye = gameCamera.CFrame.Position
+        local handler = bedwars.BlockController:getHandlerRegistry():getHandler(bed.Name)
+        local positions = handler and handler:getContainedPositions(bed) or {bed.Position / 3}
+        for _, gridPos in positions do
+            local worldPos = gridPos * 3
+            local res = workspace:Raycast(eye, worldPos - eye, losFilter)
+            if res and res.Instance and res.Instance ~= bed then
+                return res.Instance
+            end
+        end
+        return nil
+    end
+
     -- True only when the currently held tool can actually break this block (e.g. a pickaxe for iron ore).
     local function holdingToolFor(block)
         local meta = bedwars.ItemMeta[block.Name]
@@ -15425,9 +15440,19 @@ run(function()
                 if heldOnly and not holdingToolFor(v) then continue end
     
                 hit = hit + 1
-                -- Only break the target bed itself once it is visible from the camera; until then just clear its defense.
-                local keepTarget = visGate and not isBedVisible(v)
-                local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, breakmethods[Mode.Value], Angle.Value, true, keepTarget, heldOnly)
+                -- Bed target: only strike the bed itself once it is visible from the camera. While it is
+                -- exposed but still hidden, break whatever block is blocking our line of sight so a hole we
+                -- can actually see through keeps opening; only fall back to clearing defense if none is found.
+                local breakTarget, useWall, protect = v, true, false
+                if visGate and not isBedVisible(v) then
+                    local occ = firstOccluder(v)
+                    if occ then
+                        breakTarget, useWall, protect = occ, false, false
+                    else
+                        protect = true
+                    end
+                end
+                local target, path, endpos = bedwars.breakBlock(breakTarget, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, breakmethods[Mode.Value], Angle.Value, useWall, protect, heldOnly)
                 if path then
                     local currentnode = target
                     for _, part in parts do
