@@ -15260,6 +15260,8 @@ run(function()
     local SelfBreak
     local InstantBreak
     local LimitItem
+    local TargetLock
+    local targetGlow
     local customlist, parts = {}, {}
     
     local function customHealthbar(self, blockRef, health, maxHealth, changeHealth, block)
@@ -15452,6 +15454,8 @@ run(function()
                         protect = true
                     end
                 end
+                -- Target Lock: glow the block we're currently locked onto and breaking (ported from KingDraco).
+                if targetGlow then targetGlow.Adornee = breakTarget end
                 local target, path, endpos = bedwars.breakBlock(breakTarget, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, breakmethods[Mode.Value], Angle.Value, useWall, protect, heldOnly)
                 if path then
                     local currentnode = target
@@ -15493,7 +15497,16 @@ run(function()
                     highlight.Parent = part
                     table.insert(parts, part)
                 end
-    
+
+                -- Target Lock glow: locks a red highlight onto the block being broken (ported from KingDraco).
+                targetGlow = Instance.new('Highlight')
+                targetGlow.FillTransparency = 0.75
+                targetGlow.OutlineTransparency = 0
+                targetGlow.FillColor = Color3.fromRGB(255, 80, 80)
+                targetGlow.OutlineColor = Color3.fromRGB(255, 200, 200)
+                targetGlow.Enabled = TargetLock.Enabled
+                targetGlow.Parent = gameCamera
+
                 local beds = collection('bed', Breaker)
                 local luckyblock = collection('LuckyBlock', Breaker)
                 local ironores = collection('iron_ore_mesh_block', Breaker)
@@ -15556,6 +15569,7 @@ run(function()
                         for _, v in parts do
                             v.Position = Vector3.zero
                         end
+                        if targetGlow then targetGlow.Adornee = nil end
                     end
                 until not Breaker.Enabled
             else
@@ -15564,6 +15578,7 @@ run(function()
                     v:Destroy()
                 end
                 table.clear(parts)
+                if targetGlow then targetGlow:Destroy() targetGlow = nil end
             end
         end,
         Tooltip = 'Break blocks around you automatically'
@@ -15660,6 +15675,17 @@ run(function()
     LimitItem = Breaker:CreateToggle({
         Name = 'Limit to items',
         Tooltip = 'Only breaks when tools are held'
+    })
+    TargetLock = Breaker:CreateToggle({
+        Name = 'Target Lock',
+        Tooltip = 'Glows the block you are currently locked onto and breaking (ported from KingDraco)',
+        Default = true,
+        Function = function(callback)
+            if targetGlow then
+                targetGlow.Enabled = callback
+                if not callback then targetGlow.Adornee = nil end
+            end
+        end
     })
 end)
 
