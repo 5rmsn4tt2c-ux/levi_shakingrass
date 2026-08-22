@@ -18153,7 +18153,7 @@ run(function()
             bedwars.SwordController:swingSwordAtMouse(chargeTime)
         end
 
-        bedwars.SyncEvents.SwordChargedSwing:fire(lplr, tool, {chargeTime = chargeTime})
+        if bedwars.SyncEvents.SwordChargedSwing then bedwars.SyncEvents.SwordChargedSwing:fire(lplr, tool, {chargeTime = chargeTime}) end
         cooldown = tick() + Delay.Value
     end
 
