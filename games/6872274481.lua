@@ -18118,27 +18118,54 @@ run(function()
     local FullCharge
     local Delay
 
-    local Balance = bedwars.LumenBalance or {MIN_CHARGE_TIME = 0.65, MAX_CHARGE_TIME = 1.25}
     local Sword = 'light_sword'
     local cooldown = 0
 
-    local function getChargeTime()
+    local AttackRemote = {FireServer = function(self, ...) end}
+    task.spawn(function()
+        AttackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
+    end)
+
+    -- 0..1 charge fraction to report. The lumen only releases its beam on a (near) full
+    -- charge, so Full charge sends 1; otherwise send the sword's min-charge fraction.
+    local function chargeRatio()
+        if FullCharge.Enabled then return 1 end
         local itemmeta = bedwars.ItemMeta[Sword]
         local charged = itemmeta and itemmeta.sword and itemmeta.sword.chargedAttack
-        local minimum = charged and charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME
-        local maximum = charged and charged.maxChargeTimeSec or Balance.MAX_CHARGE_TIME
-        return FullCharge.Enabled and maximum or minimum
+        if charged and charged.minChargeTimeSec and charged.maxChargeTimeSec and charged.maxChargeTimeSec > 0 then
+            return charged.minChargeTimeSec / charged.maxChargeTimeSec
+        end
+        return 1
     end
 
-    local function chargedSwing()
+    local function chargedSwing(target)
         local tool = store.hand.tool
         if not tool or tool.Name ~= Sword then return end
+        local root = target.RootPart or (target.Character and target.Character.PrimaryPart)
+        if not root then return end
 
-        -- This game build has no SwordChargeController/ChargeState state machine (indexing
-        -- them threw "attempt to index nil with 'Idle'"). A charged swing is performed
-        -- directly via swingSwordAtMouse(chargeTime) -- the same call the autoclicker uses
-        -- for swords -- where chargeTime is the seconds-of-charge reported to the server.
-        bedwars.SwordController:swingSwordAtMouse(getChargeTime())
+        -- This build has no SwordChargeController/ChargeState state machine (indexing them
+        -- threw "attempt to index nil with 'Idle'"), and a plain swingSwordAtMouse only does
+        -- a normal melee swing -- it never releases the lumen wave. Instead we send a charged
+        -- attack straight to the server via the AttackEntity remote (the same one the killaura
+        -- uses), with chargeRatio high enough to fire the beam.
+        local selfpos = entitylib.character.RootPart.Position
+        local dir = CFrame.lookAt(selfpos, root.Position).LookVector
+
+        bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
+        AttackRemote:FireServer({
+            weapon = tool,
+            chargedAttack = {chargeRatio = chargeRatio()},
+            entityInstance = target.Character,
+            validate = {
+                raycast = {
+                    cameraPosition = {value = selfpos},
+                    cursorDirection = {value = dir}
+                },
+                targetPosition = {value = root.Position},
+                selfPosition = {value = selfpos}
+            }
+        })
         cooldown = tick() + Delay.Value
     end
 
@@ -18160,7 +18187,7 @@ run(function()
                         })
 
                         if target then
-                            chargedSwing()
+                            chargedSwing(target)
                         end
                     end
                     task.wait(0.1)
