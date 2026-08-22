@@ -18130,98 +18130,35 @@ run(function()
         return FullCharge.Enabled and maximum or minimum
     end
 
-    local debugLog = {}
-    local function dlog(msg)
-        local entry = '[AutoLumen] ' .. tostring(msg)
-        table.insert(debugLog, entry)
-        warn(entry)
-    end
-    local function copyDebug()
-        if #debugLog > 0 then
-            pcall(function() setclipboard(table.concat(debugLog, '\n')) end)
-        end
-    end
-
     local function chargedSwing()
-        debugLog = {}
         local charge = bedwars.SwordChargeController
 
-        -- dump all keys on SwordChargeController
-        dlog("=== SwordChargeController keys ===")
-        for k, v in pairs(charge) do
-            dlog("  " .. tostring(k) .. " = " .. tostring(v) .. " (" .. typeof(v) .. ")")
+        if charge.chargeState ~= 'IDLE' then return end
+
+        charge:startCharging(Sword)
+        local started = charge:getChargeStartTime()
+        if started == 0 then started = tick() end
+
+        local target = getChargeTime() + 0.05
+        repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
+        if not AutoLumen.Enabled or not entitylib.isAlive then
+            charge:stopCharging(Sword)
+            return
         end
 
-        -- check metatable methods too
-        local mt = getmetatable(charge)
-        if mt and mt.__index and type(mt.__index) == 'table' then
-            dlog("=== SwordChargeController metatable __index keys ===")
-            for k, v in pairs(mt.__index) do
-                dlog("  " .. tostring(k) .. " = " .. typeof(v))
-            end
+        local tool = store.hand.tool
+        if not tool or tool.Name ~= Sword then
+            charge:stopCharging(Sword)
+            return
         end
 
-        -- check ClientSync
-        dlog("=== ClientSync check ===")
-        pcall(function()
-            local cs = bedwars.ClientSync
-            dlog("ClientSync: " .. tostring(cs))
-            if cs then
-                for k, v in pairs(cs) do
-                    dlog("  CS." .. tostring(k) .. " = " .. typeof(v))
-                end
-            end
-        end)
+        local chargeTime = tick() - started
 
-        -- check SyncEvents
-        dlog("=== SyncEvents check ===")
-        pcall(function()
-            local se = rawget(bedwars, 'SyncEvents')
-            dlog("rawget SyncEvents: " .. tostring(se))
-        end)
-        pcall(function()
-            local se = bedwars.SyncEvents
-            dlog("bedwars.SyncEvents: " .. tostring(se))
-            if se then
-                for k, v in pairs(se) do
-                    dlog("  SE." .. tostring(k) .. " = " .. typeof(v))
-                end
-            end
-        end)
+        -- swing BEFORE stopping charge so SwordController sees the active charge
+        bedwars.SwordController:swingSwordAtMouse(chargeTime)
+        charge:stopCharging(Sword)
 
-        -- check SwordController methods
-        dlog("=== SwordController keys ===")
-        pcall(function()
-            local sc = bedwars.SwordController
-            for k, v in pairs(sc) do
-                if type(k) == 'string' and (k:lower():find('charge') or k:lower():find('swing') or k:lower():find('attack') or k:lower():find('send') or k:lower():find('fire')) then
-                    dlog("  SC." .. tostring(k) .. " = " .. typeof(v))
-                end
-            end
-        end)
-
-        -- check lastChargedAttackTimeMap
-        dlog("=== lastChargedAttackTimeMap ===")
-        pcall(function()
-            dlog("exists: " .. tostring(bedwars.SwordController.lastChargedAttackTimeMap ~= nil))
-            if bedwars.SwordController.lastChargedAttackTimeMap then
-                for k, v in pairs(bedwars.SwordController.lastChargedAttackTimeMap) do
-                    dlog("  " .. tostring(k) .. " = " .. tostring(v))
-                end
-            end
-        end)
-
-        -- check chargedAttack meta deeply
-        dlog("=== chargedAttack meta ===")
-        pcall(function()
-            local ca = bedwars.ItemMeta[Sword].sword.chargedAttack
-            for k, v in pairs(ca) do
-                dlog("  " .. tostring(k) .. " = " .. tostring(v))
-            end
-        end)
-
-        dlog("=== END DUMP ===")
-        copyDebug()
+        cooldown = tick() + Delay.Value
     end
 
     AutoLumen = vape.Categories.Kits:CreateModule({
