@@ -4410,6 +4410,35 @@ run(function()
     			oldd = bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition
     			-- Resolver runs while PA is on; it no-ops unless Debug Log captured shots.
     			ProjectileAimbot:Clean(runService.Heartbeat:Connect(paDebugResolve))
+    			-- Lumen sword wave aim: runs on PostSimulation, aims camera at
+    			-- predicted target position so swingSwordAtMouse fires correctly
+    			ProjectileAimbot:Clean(runService.PostSimulation:Connect(function()
+    				if not entitylib.isAlive then return end
+    				if not store.hand.tool or store.hand.tool.Name ~= 'light_sword' then return end
+    				if store.equippedKit ~= 'lumen' then return end
+    				local plr = entitylib.EntityMouse({
+    					Part = 'RootPart',
+    					Range = FOV.Value,
+    					Players = Targets.Players.Enabled,
+    					NPCs = Targets.NPCs.Enabled,
+    					Wallcheck = Targets.Walls.Enabled,
+    					Sort = sortmethods[Sort.Value or 'Distance'],
+    					Origin = entitylib.character.RootPart.Position,
+    				})
+    				if plr and plr.RootPart then
+    					local origin = entitylib.character.RootPart.Position
+    					local targetPos = plr.RootPart.Position
+    					local dist = (targetPos - origin).Magnitude
+    					-- Read wave speed from game data; fall back to 60 studs/s
+    					local meta = bedwars.ItemMeta and bedwars.ItemMeta['light_sword']
+    					local waveSpeed = (meta and meta.sword and meta.sword.chargedAttack and meta.sword.chargedAttack.waveSpeed) or 60
+    					local travelTime = dist / waveSpeed
+    					-- Lead target: wave has no gravity so it's straight velocity-only lead
+    					local predicted = targetPos + plr.RootPart.Velocity * travelTime
+    					gameCamera.CFrame = CFrame.lookAt(gameCamera.CFrame.Position, predicted)
+    					targetinfo.Targets[plr] = tick() + 1
+    				end
+    			end))
     			launchHook = bedwars.ProjectileLaunchHook:Add('ProjectileAimbot', 100, function(nextLaunch, ...)
     				local self, projmeta, worldmeta, origin, shootpos = ...
     				local plr = entitylib.EntityMouse({
