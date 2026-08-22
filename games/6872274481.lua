@@ -18130,103 +18130,58 @@ run(function()
         return FullCharge.Enabled and maximum or minimum
     end
 
-    local debugLog = {}
-    local function dlog(msg)
-        local entry = string.format("[AutoLumen %.2f] %s", tick() % 1000, msg)
-        table.insert(debugLog, entry)
-        warn(entry)
-    end
-
-    local function copyDebug()
-        if #debugLog > 0 then
-            local text = table.concat(debugLog, '\n')
-            if setclipboard then pcall(setclipboard, text) end
-        end
-    end
+    local LumenAttackRemote = {FireServer = function(self, ...) end}
+    task.spawn(function()
+        LumenAttackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
+    end)
 
     local function chargedSwing()
-        debugLog = {}
         local charge = bedwars.SwordChargeController
-        dlog("chargedSwing START")
-        dlog("ChargeState exists: " .. tostring(bedwars.ChargeState ~= nil))
-        dlog("SwordChargeController: " .. tostring(charge))
 
-        if bedwars.ChargeState then
-            local state = charge:getChargeState()
-            dlog("getChargeState(): " .. tostring(state) .. " | Idle: " .. tostring(bedwars.ChargeState.Idle))
-            if state ~= bedwars.ChargeState.Idle then
-                dlog("EARLY RETURN: not idle")
-                copyDebug()
-                return
-            end
-        else
-            dlog("ChargeState is nil, skipping idle check")
-        end
+        if bedwars.ChargeState and charge:getChargeState() ~= bedwars.ChargeState.Idle then return end
 
         charge:startCharging(Sword)
-        dlog("startCharging called")
         local started = charge:getChargeStartTime()
-        dlog("getChargeStartTime(): " .. tostring(started))
-        if started == 0 then
-            dlog("EARLY RETURN: started == 0")
-            copyDebug()
-            return
-        end
+        if started == 0 then return end
 
         local target = getChargeTime() + 0.05
-        dlog("waiting for charge, target time: " .. tostring(target))
         repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
 
         local chargeTime = tick() - started
-        dlog("charge done, chargeTime: " .. tostring(chargeTime))
         charge:stopCharging(Sword)
-        dlog("stopCharging called")
-        if not AutoLumen.Enabled or not entitylib.isAlive then
-            dlog("EARLY RETURN: disabled or dead after charge")
-            copyDebug()
-            return
-        end
+        if not AutoLumen.Enabled or not entitylib.isAlive then return end
 
         local tool = store.hand.tool
-        dlog("tool: " .. tostring(tool and tool.Name or "nil"))
-        if not tool or tool.Name ~= Sword then
-            dlog("EARLY RETURN: wrong tool or no tool")
-            copyDebug()
-            return
-        end
+        if not tool or tool.Name ~= Sword then return end
 
-        local itemmeta = bedwars.ItemMeta[Sword]
-        dlog("ItemMeta[Sword]: " .. tostring(itemmeta))
-        dlog("ItemMeta[Sword].sword: " .. tostring(itemmeta and itemmeta.sword))
-        local charged = itemmeta and itemmeta.sword and itemmeta.sword.chargedAttack
-        dlog("chargedAttack: " .. tostring(charged))
-        if charged then
-            dlog("skipSwingDamage: " .. tostring(charged.skipSwingDamage))
-            dlog("minChargeTimeSec: " .. tostring(charged.minChargeTimeSec))
-        end
+        local charged = bedwars.ItemMeta[Sword].sword.chargedAttack
+        local minCharge = charged and charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME
+        local maxCharge = charged and charged.maxChargeTimeSec or Balance.MAX_CHARGE_TIME
+        local chargeRatio = math.clamp((chargeTime - minCharge) / (maxCharge - minCharge), 0, 1)
 
-        local didSwing = false
-        if charged and not (charged.skipSwingDamage and chargeTime > (charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME)) then
-            dlog("calling swingSwordAtMouse(" .. tostring(chargeTime) .. ")")
+        if not (charged and charged.skipSwingDamage and chargeTime > minCharge) then
             bedwars.SwordController:swingSwordAtMouse(chargeTime)
-            didSwing = true
-        else
-            dlog("SKIPPED swingSwordAtMouse (skipSwingDamage)")
         end
 
-        dlog("SyncEvents: " .. tostring(bedwars.SyncEvents))
-        dlog("SwordChargedSwing: " .. tostring(bedwars.SyncEvents and bedwars.SyncEvents.SwordChargedSwing))
         if bedwars.SyncEvents and bedwars.SyncEvents.SwordChargedSwing then
             bedwars.SyncEvents.SwordChargedSwing:fire(lplr, tool, {chargeTime = chargeTime})
-            dlog("SwordChargedSwing:fire() called")
         else
-            dlog("SwordChargedSwing NOT available, skipped fire")
+            local selfPos = entitylib.character.RootPart.Position
+            local mouseDir = lplr:GetMouse().UnitRay.Direction
+            LumenAttackRemote:FireServer({
+                weapon = tool,
+                chargedAttack = {chargeRatio = chargeRatio},
+                validate = {
+                    raycast = {
+                        cameraPosition = {value = selfPos},
+                        cursorDirection = {value = mouseDir}
+                    },
+                    selfPosition = {value = selfPos}
+                }
+            })
         end
 
-        dlog("didSwing: " .. tostring(didSwing))
         cooldown = tick() + Delay.Value
-        dlog("chargedSwing END, cooldown set")
-        copyDebug()
     end
 
     AutoLumen = vape.Categories.Kits:CreateModule({
