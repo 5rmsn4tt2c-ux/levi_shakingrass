@@ -849,6 +849,7 @@ run(function()
 		ClientDamageBlock = require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['block-engine'].out.shared.remotes).BlockEngineRemotes.Client,
 		CombatConstant = require(replicatedStorage.TS.combat['combat-constant']).CombatConstant,
 		ChargeState = require(replicatedStorage.TS.combat['charge-state']).ChargeState,
+		SyncEvents = require(lplr.PlayerScripts.TS['client-sync-events']).ClientSyncEvents,
 		DamageIndicator = Knit.Controllers.DamageIndicatorController.spawnDamageIndicator,
 		DefaultKillEffect = require(lplr.PlayerScripts.TS.controllers.global.locker['kill-effect'].effects['default-kill-effect']),
 		EnchantMeta = require(replicatedStorage.TS.enchant['enchant-meta']).EnchantMeta,
