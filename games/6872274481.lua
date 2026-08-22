@@ -18140,13 +18140,17 @@ run(function()
         if not charge then return end
 
         charge:startCharging(Sword)
-        local started = charge:getChargeStartTime()
-        if started == 0 then return end
+        -- Time the charge with our own clock rather than charge:getChargeStartTime(): in this
+        -- build that returned 0 (or a value on a different clock), so the old `if started == 0
+        -- then return` bailed out AFTER starting the charge but BEFORE stopCharging -- the sword
+        -- looked charged but never released. Waiting real wall-clock time makes the server see a
+        -- genuine full charge, then stopCharging releases the wave.
+        local startedAt = tick()
 
         local target = getChargeTime() + 0.05
-        repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
+        repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - startedAt) >= target
 
-        local chargeTime = tick() - started
+        local chargeTime = tick() - startedAt
         charge:stopCharging(Sword)
         if not AutoLumen.Enabled or not entitylib.isAlive then return end
 
