@@ -1215,7 +1215,7 @@ run(function()
 		end
 	end
 
-	bedwars.breakBlock = function(block, effects, anim, customHealthbar, visualise, sort, angle, wallcheck, keepTarget)
+	bedwars.breakBlock = function(block, effects, anim, customHealthbar, visualise, sort, angle, wallcheck, keepTarget, noSwitch)
 		if lplr:GetAttribute('DenyBlockBreak') or not entitylib.isAlive or InfiniteFly.Enabled then return end
 
 		local handler = bedwars.BlockController:getHandlerRegistry():getHandler(block.Name)
@@ -1234,7 +1234,7 @@ run(function()
 			if not dblock then return end
 			if keepTarget and dblock == block then return end
 
-			if (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) > 0.4 then
+			if not noSwitch and (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) > 0.4 then
 				local breaktype = dblock.Name == 'gumdrop_bounce_pad' and 'stone' or bedwars.ItemMeta[dblock.Name].block.breakType
 				local tool = store.tools[breaktype]
 				if tool then
@@ -15272,6 +15272,8 @@ run(function()
     local SelfBreak
     local InstantBreak
     local LimitItem
+    local TargetLock
+    local targetGlow
     local customlist, parts = {}, {}
     
     local function customHealthbar(self, blockRef, health, maxHealth, changeHealth, block)
@@ -15373,19 +15375,100 @@ run(function()
             Size = UDim2.fromScale(newpercent, 1), BackgroundColor3 = Color3.fromHSV(math.clamp(newpercent / 2.5, 0, 1), 0.89, 0.75)
         }):Play()
     end
-    
+
     local hit = 0
-    
-    local function attemptBreak(tab, localPosition, keepTarget)
+
+    local losFilter
+    local function refreshFilter()
+        if not losFilter then
+            losFilter = RaycastParams.new()
+            losFilter.FilterType = Enum.RaycastFilterType.Include
+            losFilter.RespectCanCollide = false
+        end
+        local list = {}
+        for _, b in store.blocks do
+            if b and b.Parent then table.insert(list, b) end
+        end
+        losFilter.FilterDescendantsInstances = list
+    end
+
+    local function isVisible(worldPos)
+        local eye = gameCamera.CFrame.Position
+        for _, off in {
+            Vector3.zero,
+            Vector3.new(1.35, 0, 0), Vector3.new(-1.35, 0, 0),
+            Vector3.new(0, 1.35, 0), Vector3.new(0, -1.35, 0),
+            Vector3.new(0, 0, 1.35), Vector3.new(0, 0, -1.35)
+        } do
+            local probe = worldPos + off
+            local ray = probe - eye
+            local res = workspace:Raycast(eye, ray, losFilter)
+            if not res then return true end
+            if (res.Position - eye).Magnitude >= ray.Magnitude - 1.5 then return true end
+            if res.Instance and (res.Instance.Position - worldPos).Magnitude < 2.5 then return true end
+        end
+        return false
+    end
+
+    local function isBedVisible(bed)
+        local handler = bedwars.BlockController:getHandlerRegistry():getHandler(bed.Name)
+        local positions = handler and handler:getContainedPositions(bed) or {bed.Position / 3}
+        for _, gridPos in positions do
+            if isVisible(gridPos * 3) then return true end
+        end
+        return false
+    end
+
+    -- The placed block standing between the camera and the bed. Breaking it opens the sightline.
+    local function firstOccluder(bed)
+        local eye = gameCamera.CFrame.Position
+        local handler = bedwars.BlockController:getHandlerRegistry():getHandler(bed.Name)
+        local positions = handler and handler:getContainedPositions(bed) or {bed.Position / 3}
+        for _, gridPos in positions do
+            local worldPos = gridPos * 3
+            local res = workspace:Raycast(eye, worldPos - eye, losFilter)
+            if res and res.Instance and res.Instance ~= bed then
+                return res.Instance
+            end
+        end
+        return nil
+    end
+
+    -- True only when the currently held tool can actually break this block (e.g. a pickaxe for iron ore).
+    local function holdingToolFor(block)
+        local meta = bedwars.ItemMeta[block.Name]
+        local breaktype = meta and meta.block and meta.block.breakType
+        local heldMeta = store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name]
+        return breaktype and heldMeta and heldMeta.breakBlock and (heldMeta.breakBlock[breaktype] or 0) > 0
+    end
+
+    local function attemptBreak(tab, localPosition, visGate, heldOnly)
         if not tab then return end
+        if visGate then refreshFilter() end
         for _, v in tab do
             if (v.Position - localPosition).Magnitude < Range.Value and bedwars.BlockController:isBlockBreakable({blockPosition = v.Position / 3}, lplr) then
                 if not SelfBreak.Enabled and v:GetAttribute('PlacedByUserId') == lplr.UserId then continue end
                 if (v:GetAttribute('BedShieldEndTime') or 0) > workspace:GetServerTimeNow() then continue end
                 if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then continue end
+                -- Iron ore: never force-swap to the pickaxe; only mine while it is already in hand.
+                if heldOnly and not holdingToolFor(v) then continue end
     
                 hit = hit + 1
-                local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, breakmethods[Mode.Value], Angle.Value, true, keepTarget)
+                -- Bed target: only strike the bed itself once it is visible from the camera. While it is
+                -- exposed but still hidden, break whatever block is blocking our line of sight so a hole we
+                -- can actually see through keeps opening; only fall back to clearing defense if none is found.
+                local breakTarget, useWall, protect = v, true, false
+                if visGate and not isBedVisible(v) then
+                    local occ = firstOccluder(v)
+                    if occ then
+                        breakTarget, useWall, protect = occ, false, false
+                    else
+                        protect = true
+                    end
+                end
+                -- Target Lock: glow the block we're currently locked onto and breaking (ported from KingDraco).
+                if targetGlow then targetGlow.Adornee = breakTarget end
+                local target, path, endpos = bedwars.breakBlock(breakTarget, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, breakmethods[Mode.Value], Angle.Value, useWall, protect, heldOnly)
                 if path then
                     local currentnode = target
                     for _, part in parts do
@@ -15426,7 +15509,16 @@ run(function()
                     highlight.Parent = part
                     table.insert(parts, part)
                 end
-    
+
+                -- Target Lock glow: locks a red highlight onto the block being broken (ported from KingDraco).
+                targetGlow = Instance.new('Highlight')
+                targetGlow.FillTransparency = 0.75
+                targetGlow.OutlineTransparency = 0
+                targetGlow.FillColor = Color3.fromRGB(255, 80, 80)
+                targetGlow.OutlineColor = Color3.fromRGB(255, 200, 200)
+                targetGlow.Enabled = TargetLock.Enabled
+                targetGlow.Parent = gameCamera
+
                 local beds = collection('bed', Breaker)
                 local luckyblock = collection('LuckyBlock', Breaker)
                 local ironores = collection('iron_ore_mesh_block', Breaker)
@@ -15482,13 +15574,14 @@ run(function()
                                         table.insert(baseOres, ore)
                                     end
                                 end
-                                if attemptBreak(baseOres, localPosition) then continue end
+                                if attemptBreak(baseOres, localPosition, nil, true) then continue end
                             end
                         end
     
                         for _, v in parts do
                             v.Position = Vector3.zero
                         end
+                        if targetGlow then targetGlow.Adornee = nil end
                     end
                 until not Breaker.Enabled
             else
@@ -15497,6 +15590,7 @@ run(function()
                     v:Destroy()
                 end
                 table.clear(parts)
+                if targetGlow then targetGlow:Destroy() targetGlow = nil end
             end
         end,
         Tooltip = 'Break blocks around you automatically'
@@ -15593,6 +15687,17 @@ run(function()
     LimitItem = Breaker:CreateToggle({
         Name = 'Limit to items',
         Tooltip = 'Only breaks when tools are held'
+    })
+    TargetLock = Breaker:CreateToggle({
+        Name = 'Target Lock',
+        Tooltip = 'Glows the block you are currently locked onto and breaking (ported from KingDraco)',
+        Default = true,
+        Function = function(callback)
+            if targetGlow then
+                targetGlow.Enabled = callback
+                if not callback then targetGlow.Adornee = nil end
+            end
+        end
     })
 end)
 
@@ -18016,6 +18121,207 @@ run(function()
     	Decimal = 10,
     	Tooltip = 'Delay between triggers'
     })
+end)
+
+run(function()
+    local AutoLumen
+    local Targets
+    local Range
+    local FullCharge
+    local Delay
+
+    local Balance = bedwars.LumenBalance or {MIN_CHARGE_TIME = 0.65, MAX_CHARGE_TIME = 1.25}
+    local Sword = 'light_sword'
+    local cooldown = 0
+
+    local function getChargeTime()
+        local itemmeta = bedwars.ItemMeta[Sword]
+        local charged = itemmeta and itemmeta.sword and itemmeta.sword.chargedAttack
+        local minimum = charged and charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME
+        local maximum = charged and charged.maxChargeTimeSec or Balance.MAX_CHARGE_TIME
+        return FullCharge.Enabled and maximum or minimum
+    end
+
+    -- DEBUG: spy on everything when you manually do a charged lumen swing
+    local spyLog = {}
+    local spyActive = false
+    local spyFile = 'lumen_spy.txt'
+    local function slog(msg)
+        local entry = string.format("[LumenSpy %.2f] %s", tick() % 1000, tostring(msg))
+        table.insert(spyLog, entry)
+        warn(entry)
+        pcall(function()
+            appendfile(spyFile, entry .. '\n')
+        end)
+        pcall(function()
+            if not appendfile then
+                writefile(spyFile, table.concat(spyLog, '\n'))
+            end
+        end)
+    end
+
+    local function installSpy()
+        if spyActive then return end
+        spyActive = true
+        local charge = bedwars.SwordChargeController
+        local sc = bedwars.SwordController
+
+        -- hook startCharging
+        local origStart = charge.startCharging
+        charge.startCharging = function(self, ...)
+            slog(">>> startCharging(" .. table.concat({...}, ", ") .. ")")
+            slog("  chargeState before: " .. tostring(self.chargeState))
+            local ret = origStart(self, ...)
+            slog("  chargeState after: " .. tostring(self.chargeState))
+            slog("  chargeStartTime: " .. tostring(self.chargeStartTime))
+            slog("  chargeTime: " .. tostring(self.chargeTime))
+            return ret
+        end
+
+        -- hook stopCharging
+        local origStop = charge.stopCharging
+        charge.stopCharging = function(self, ...)
+            slog(">>> stopCharging(" .. table.concat({...}, ", ") .. ")")
+            slog("  chargeState before: " .. tostring(self.chargeState))
+            slog("  chargeTime: " .. tostring(self.chargeTime))
+            slog("  chargeStartTime: " .. tostring(self.chargeStartTime))
+            local ret = origStop(self, ...)
+            slog("  chargeState after: " .. tostring(self.chargeState))
+            return ret
+        end
+
+        -- hook swingSwordAtMouse
+        local origSwing = sc.swingSwordAtMouse
+        sc.swingSwordAtMouse = function(self, ...)
+            local args = {...}
+            slog(">>> swingSwordAtMouse(" .. table.concat(args, ", ") .. ")")
+            slog("  chargeState: " .. tostring(charge.chargeState))
+            slog("  chargeTime: " .. tostring(charge.chargeTime))
+            slog("  lastAttack: " .. tostring(self.lastAttack))
+            if self.lastChargedAttackTimeMap then
+                for k, v in pairs(self.lastChargedAttackTimeMap) do
+                    slog("  lastChargedAttack[" .. tostring(k) .. "]: " .. tostring(v))
+                end
+            end
+            local ret = origSwing(self, ...)
+            slog("  after swing - lastAttack: " .. tostring(self.lastAttack))
+            if self.lastChargedAttackTimeMap then
+                for k, v in pairs(self.lastChargedAttackTimeMap) do
+                    slog("  after lastChargedAttack[" .. tostring(k) .. "]: " .. tostring(v))
+                end
+            end
+            return ret
+        end
+
+        -- hook sendServerRequest
+        local origSend = sc.sendServerRequest
+        if origSend then
+            sc.sendServerRequest = function(self, ...)
+                local args = {...}
+                slog(">>> sendServerRequest called")
+                for i, arg in ipairs(args) do
+                    if type(arg) == 'table' then
+                        for k, v in pairs(arg) do
+                            if type(v) == 'table' then
+                                local sub = {}
+                                for sk, sv in pairs(v) do
+                                    table.insert(sub, tostring(sk) .. "=" .. tostring(sv))
+                                end
+                                slog("  arg" .. i .. "." .. tostring(k) .. " = {" .. table.concat(sub, ", ") .. "}")
+                            else
+                                slog("  arg" .. i .. "." .. tostring(k) .. " = " .. tostring(v))
+                            end
+                        end
+                    else
+                        slog("  arg" .. i .. " = " .. tostring(arg))
+                    end
+                end
+                return origSend(self, ...)
+            end
+        end
+
+        -- hook updateChargeState
+        local origUpdate = charge.updateChargeState
+        if origUpdate then
+            charge.updateChargeState = function(self, ...)
+                local args = {...}
+                slog(">>> updateChargeState(" .. table.concat(args, ", ") .. ")")
+                slog("  chargeState before: " .. tostring(self.chargeState))
+                local ret = origUpdate(self, ...)
+                slog("  chargeState after: " .. tostring(self.chargeState))
+                return ret
+            end
+        end
+
+        slog("=== SPY INSTALLED - do a manual charged lumen swing now ===")
+    end
+
+    local function chargedSwing()
+        -- don't actually swing, just save and copy the spy log
+        if #spyLog > 0 then
+            local text = table.concat(spyLog, '\n')
+            pcall(function() writefile(spyFile, text) end)
+            pcall(function() setclipboard(text) end)
+            warn("[LumenSpy] Log saved to " .. spyFile .. " and copied to clipboard (" .. #spyLog .. " lines)")
+            spyLog = {}
+        end
+    end
+
+    AutoLumen = vape.Categories.Kits:CreateModule({
+        Name = 'AutoLumen',
+        Function = function(callback)
+            if callback then
+                installSpy()
+                cooldown = 0
+
+                repeat
+                    if entitylib.isAlive and store.equippedKit == 'lumen' and store.hand.tool and store.hand.tool.Name == Sword and tick() >= cooldown then
+                        local target = entitylib.EntityMouse({
+                            Origin = entitylib.character.RootPart.Position,
+                            Range = Range.Value,
+                            Part = 'RootPart',
+                            Players = Targets.Players.Enabled,
+                            NPCs = Targets.NPCs.Enabled,
+                            Wallcheck = Targets.Walls.Enabled
+                        })
+
+                        if target then
+                            chargedSwing()
+                        end
+                    end
+                    task.wait(0.1)
+                until not AutoLumen.Enabled
+            end
+        end,
+        Tooltip = 'Charges the sword of light and releases a wave whenever an enemy is in front of you, Killaura skips this sword because it has a charged attack'
+    })
+    Targets = AutoLumen:CreateTargets({
+        Players = true,
+        Walls = true
+    })
+    Range = AutoLumen:CreateSlider({
+        Name = 'Range',
+        Min = 1,
+        Max = 120,
+        Default = 60,
+        Suffix = function(val)
+            return val <= 1 and 'stud' or 'studs'
+        end
+    })
+    FullCharge = AutoLumen:CreateToggle({
+        Name = 'Full charge',
+        Default = true,
+        Tooltip = 'Holds the swing to the maximum charge, an upgraded lumen only fires the multi beam at full charge'
+    })
+    Delay = AutoLumen:CreateSlider({
+        Name = 'Delay',
+        Min = 0,
+        Max = 2,
+        Default = 0.1,
+        Decimal = 100,
+        Suffix = 'seconds'
+    })
+
 end)
 
 run(function()
