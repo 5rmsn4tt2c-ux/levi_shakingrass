@@ -18130,35 +18130,118 @@ run(function()
         return FullCharge.Enabled and maximum or minimum
     end
 
-    local function chargedSwing()
+    -- DEBUG: spy on everything when you manually do a charged lumen swing
+    local spyLog = {}
+    local spyActive = false
+    local function slog(msg)
+        local entry = string.format("[LumenSpy %.2f] %s", tick() % 1000, tostring(msg))
+        table.insert(spyLog, entry)
+        warn(entry)
+    end
+
+    local function installSpy()
+        if spyActive then return end
+        spyActive = true
         local charge = bedwars.SwordChargeController
+        local sc = bedwars.SwordController
 
-        if charge.chargeState ~= 'IDLE' then return end
-
-        charge:startCharging(Sword)
-        local started = charge:getChargeStartTime()
-        if started == 0 then started = tick() end
-
-        local target = getChargeTime() + 0.05
-        repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
-        if not AutoLumen.Enabled or not entitylib.isAlive then
-            charge:stopCharging(Sword)
-            return
+        -- hook startCharging
+        local origStart = charge.startCharging
+        charge.startCharging = function(self, ...)
+            slog(">>> startCharging(" .. table.concat({...}, ", ") .. ")")
+            slog("  chargeState before: " .. tostring(self.chargeState))
+            local ret = origStart(self, ...)
+            slog("  chargeState after: " .. tostring(self.chargeState))
+            slog("  chargeStartTime: " .. tostring(self.chargeStartTime))
+            slog("  chargeTime: " .. tostring(self.chargeTime))
+            return ret
         end
 
-        local tool = store.hand.tool
-        if not tool or tool.Name ~= Sword then
-            charge:stopCharging(Sword)
-            return
+        -- hook stopCharging
+        local origStop = charge.stopCharging
+        charge.stopCharging = function(self, ...)
+            slog(">>> stopCharging(" .. table.concat({...}, ", ") .. ")")
+            slog("  chargeState before: " .. tostring(self.chargeState))
+            slog("  chargeTime: " .. tostring(self.chargeTime))
+            slog("  chargeStartTime: " .. tostring(self.chargeStartTime))
+            local ret = origStop(self, ...)
+            slog("  chargeState after: " .. tostring(self.chargeState))
+            return ret
         end
 
-        local chargeTime = tick() - started
+        -- hook swingSwordAtMouse
+        local origSwing = sc.swingSwordAtMouse
+        sc.swingSwordAtMouse = function(self, ...)
+            local args = {...}
+            slog(">>> swingSwordAtMouse(" .. table.concat(args, ", ") .. ")")
+            slog("  chargeState: " .. tostring(charge.chargeState))
+            slog("  chargeTime: " .. tostring(charge.chargeTime))
+            slog("  lastAttack: " .. tostring(self.lastAttack))
+            if self.lastChargedAttackTimeMap then
+                for k, v in pairs(self.lastChargedAttackTimeMap) do
+                    slog("  lastChargedAttack[" .. tostring(k) .. "]: " .. tostring(v))
+                end
+            end
+            local ret = origSwing(self, ...)
+            slog("  after swing - lastAttack: " .. tostring(self.lastAttack))
+            if self.lastChargedAttackTimeMap then
+                for k, v in pairs(self.lastChargedAttackTimeMap) do
+                    slog("  after lastChargedAttack[" .. tostring(k) .. "]: " .. tostring(v))
+                end
+            end
+            return ret
+        end
 
-        -- swing BEFORE stopping charge so SwordController sees the active charge
-        bedwars.SwordController:swingSwordAtMouse(chargeTime)
-        charge:stopCharging(Sword)
+        -- hook sendServerRequest
+        local origSend = sc.sendServerRequest
+        if origSend then
+            sc.sendServerRequest = function(self, ...)
+                local args = {...}
+                slog(">>> sendServerRequest called")
+                for i, arg in ipairs(args) do
+                    if type(arg) == 'table' then
+                        for k, v in pairs(arg) do
+                            if type(v) == 'table' then
+                                local sub = {}
+                                for sk, sv in pairs(v) do
+                                    table.insert(sub, tostring(sk) .. "=" .. tostring(sv))
+                                end
+                                slog("  arg" .. i .. "." .. tostring(k) .. " = {" .. table.concat(sub, ", ") .. "}")
+                            else
+                                slog("  arg" .. i .. "." .. tostring(k) .. " = " .. tostring(v))
+                            end
+                        end
+                    else
+                        slog("  arg" .. i .. " = " .. tostring(arg))
+                    end
+                end
+                return origSend(self, ...)
+            end
+        end
 
-        cooldown = tick() + Delay.Value
+        -- hook updateChargeState
+        local origUpdate = charge.updateChargeState
+        if origUpdate then
+            charge.updateChargeState = function(self, ...)
+                local args = {...}
+                slog(">>> updateChargeState(" .. table.concat(args, ", ") .. ")")
+                slog("  chargeState before: " .. tostring(self.chargeState))
+                local ret = origUpdate(self, ...)
+                slog("  chargeState after: " .. tostring(self.chargeState))
+                return ret
+            end
+        end
+
+        slog("=== SPY INSTALLED - do a manual charged lumen swing now ===")
+    end
+
+    local function chargedSwing()
+        -- don't actually swing, just copy the spy log
+        if #spyLog > 0 then
+            pcall(function() setclipboard(table.concat(spyLog, '\n')) end)
+            warn("[LumenSpy] Log copied to clipboard! (" .. #spyLog .. " lines)")
+            spyLog = {}
+        end
     end
 
     AutoLumen = vape.Categories.Kits:CreateModule({
