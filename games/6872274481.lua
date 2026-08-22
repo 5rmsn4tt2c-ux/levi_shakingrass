@@ -18130,118 +18130,49 @@ run(function()
         return FullCharge.Enabled and maximum or minimum
     end
 
-    -- DEBUG: hook the actual RemoteEvent to see what goes to the server
-    local spyLog = {}
-    local spyActive = false
-    local spyFile = 'lumen_spy.txt'
-    local function slog(msg)
-        local entry = string.format("[LumenSpy %.2f] %s", tick() % 1000, tostring(msg))
-        table.insert(spyLog, entry)
-        warn(entry)
-        pcall(function() appendfile(spyFile, entry .. '\n') end)
-        pcall(function() if not appendfile then writefile(spyFile, table.concat(spyLog, '\n')) end end)
-    end
-
-    local function deepLog(tbl, prefix, depth)
-        depth = depth or 0
-        if depth > 3 then slog(prefix .. "...") return end
-        for k, v in pairs(tbl) do
-            local key = prefix .. tostring(k)
-            if type(v) == 'table' then
-                slog(key .. " = {")
-                deepLog(v, key .. ".", depth + 1)
-                slog(key .. " }")
-            else
-                slog(key .. " = " .. tostring(v) .. " (" .. typeof(v) .. ")")
-            end
-        end
-    end
-
-    local function installSpy()
-        if spyActive then return end
-        spyActive = true
-
-        -- hook the ACTUAL RemoteEvent FireServer
-        pcall(function()
-            local attackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
-            slog("Attack remote found: " .. tostring(attackRemote) .. " (" .. attackRemote.ClassName .. ")")
-            local origFire = attackRemote.FireServer
-            attackRemote.FireServer = function(self, ...)
-                slog(">>> REMOTE FireServer called")
-                local args = {...}
-                for i, arg in ipairs(args) do
-                    if type(arg) == 'table' then
-                        slog("  arg" .. i .. ":")
-                        deepLog(arg, "    ", 0)
-                    else
-                        slog("  arg" .. i .. " = " .. tostring(arg) .. " (" .. typeof(arg) .. ")")
-                    end
-                end
-                return origFire(self, ...)
-            end
-        end)
-
-        -- also hook any InvokeServer on RemoteFunctions
-        pcall(function()
-            local attackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
-            if attackRemote.InvokeServer then
-                local origInvoke = attackRemote.InvokeServer
-                attackRemote.InvokeServer = function(self, ...)
-                    slog(">>> REMOTE InvokeServer called")
-                    local args = {...}
-                    for i, arg in ipairs(args) do
-                        if type(arg) == 'table' then
-                            slog("  arg" .. i .. ":")
-                            deepLog(arg, "    ", 0)
-                        else
-                            slog("  arg" .. i .. " = " .. tostring(arg) .. " (" .. typeof(arg) .. ")")
-                        end
-                    end
-                    return origInvoke(self, ...)
-                end
-            end
-        end)
-
-        -- hook swingSwordAtMouse to see when it's called
-        local sc = bedwars.SwordController
-        local origSwing = sc.swingSwordAtMouse
-        sc.swingSwordAtMouse = function(self, ...)
-            local args = {...}
-            slog(">>> swingSwordAtMouse(" .. table.concat(args, ", ") .. ")")
-            local ret = origSwing(self, ...)
-            slog("<<< swingSwordAtMouse done")
-            return ret
-        end
-
-        -- hook stopCharging
-        local charge = bedwars.SwordChargeController
-        local origStop = charge.stopCharging
-        charge.stopCharging = function(self, ...)
-            slog(">>> stopCharging - state: " .. tostring(self.chargeState))
-            local ret = origStop(self, ...)
-            slog("<<< stopCharging - state: " .. tostring(self.chargeState))
-            return ret
-        end
-
-        slog("=== SPY V2 INSTALLED - hook on actual remote ===")
-        slog("=== Do a manual charged lumen swing now ===")
-    end
-
     local function chargedSwing()
-        if #spyLog > 0 then
-            local text = table.concat(spyLog, '\n')
-            pcall(function() writefile(spyFile, text) end)
-            pcall(function() setclipboard(text) end)
-            warn("[LumenSpy] Log saved to " .. spyFile .. " (" .. #spyLog .. " lines)")
-            spyLog = {}
+        local charge = bedwars.SwordChargeController
+
+        if charge.chargeState ~= 'IDLE' then return end
+
+        local tool = store.hand.tool
+        if not tool or tool.Name ~= Sword then return end
+
+        -- directly set charging state (startCharging has internal guards that block programmatic calls)
+        charge.chargeState = 'CHARGING'
+        charge.chargeStartTime = workspace:GetServerTimeNow()
+        charge.chargeTime = 0
+
+        local started = tick()
+        local target = getChargeTime() + 0.05
+        repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
+
+        if not AutoLumen.Enabled or not entitylib.isAlive then
+            charge.chargeState = 'IDLE'
+            charge.chargeStartTime = 0
+            return
         end
+
+        local tool2 = store.hand.tool
+        if not tool2 or tool2.Name ~= Sword then
+            charge.chargeState = 'IDLE'
+            charge.chargeStartTime = 0
+            return
+        end
+
+        local chargeTime = tick() - started
+
+        -- match the real game flow: stopCharging (CHARGING→IDLE) then swingSwordAtMouse(chargeTime)
+        charge:stopCharging(Sword)
+        bedwars.SwordController:swingSwordAtMouse(chargeTime)
+
+        cooldown = tick() + Delay.Value
     end
 
     AutoLumen = vape.Categories.Kits:CreateModule({
         Name = 'AutoLumen',
         Function = function(callback)
             if callback then
-                installSpy()
                 cooldown = 0
 
                 repeat
