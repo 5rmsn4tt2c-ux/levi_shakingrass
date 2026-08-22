@@ -18144,40 +18144,28 @@ run(function()
 
     local function chargedSwing()
         local charge = bedwars.SwordChargeController
+        if charge:getChargeState() ~= bedwars.ChargeState.Idle then return end
 
-        if charge.chargeState ~= 'IDLE' then return end
+        charge:startCharging(Sword)
+        local started = charge:getChargeStartTime()
+        if started == 0 then return end
+
+        local target = getChargeTime() + 0.05
+        repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
+
+        local chargeTime = tick() - started
+        charge:stopCharging(Sword)
+        if not AutoLumen.Enabled or not entitylib.isAlive then return end
 
         local tool = store.hand.tool
         if not tool or tool.Name ~= Sword then return end
 
-        -- directly set charging state (startCharging has internal guards that block programmatic calls)
-        charge.chargeState = 'CHARGING'
-        charge.chargeStartTime = workspace:GetServerTimeNow()
-        charge.chargeTime = 0
-
-        local started = tick()
-        local target = getChargeTime() + 0.05
-        repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
-
-        if not AutoLumen.Enabled or not entitylib.isAlive then
-            charge.chargeState = 'IDLE'
-            charge.chargeStartTime = 0
-            return
+        local charged = bedwars.ItemMeta[Sword].sword.chargedAttack
+        if not (charged.skipSwingDamage and chargeTime > (charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME)) then
+            bedwars.SwordController:swingSwordAtMouse(chargeTime)
         end
 
-        local tool2 = store.hand.tool
-        if not tool2 or tool2.Name ~= Sword then
-            charge.chargeState = 'IDLE'
-            charge.chargeStartTime = 0
-            return
-        end
-
-        local chargeTime = tick() - started
-
-        -- match the real game flow: stopCharging (CHARGING→IDLE) then swingSwordAtMouse(chargeTime)
-        charge:stopCharging(Sword)
-        bedwars.SwordController:swingSwordAtMouse(chargeTime)
-
+        bedwars.SyncEvents.SwordChargedSwing:fire(lplr, tool, {chargeTime = chargeTime})
         cooldown = tick() + Delay.Value
     end
 
