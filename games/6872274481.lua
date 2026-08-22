@@ -18144,7 +18144,7 @@ run(function()
         return FullCharge.Enabled and maximum or minimum
     end
 
-    local function chargedSwing()
+    local function chargedSwing(ent)
         local charge = bedwars.SwordChargeController
         if charge:getChargeState() ~= bedwars.ChargeState.Idle then return end
 
@@ -18152,8 +18152,14 @@ run(function()
         local started = charge:getChargeStartTime()
         if started == 0 then return end
 
-        local target = getChargeTime() + 0.05
-        repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
+        local chargeTarget = getChargeTime() + 0.05
+        repeat
+            task.wait()
+            -- lock camera onto target while charging so swingSwordAtMouse fires the right way
+            if ent and ent.RootPart and ent.RootPart.Parent then
+                gameCamera.CFrame = CFrame.lookAt(gameCamera.CFrame.Position, ent.RootPart.Position)
+            end
+        until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= chargeTarget
 
         local chargeTime = tick() - started
         charge:stopCharging(Sword)
@@ -18161,6 +18167,11 @@ run(function()
 
         local tool = store.hand.tool
         if not tool or tool.Name ~= Sword then return end
+
+        -- final aim snap right before swing
+        if ent and ent.RootPart and ent.RootPart.Parent then
+            gameCamera.CFrame = CFrame.lookAt(gameCamera.CFrame.Position, ent.RootPart.Position)
+        end
 
         local charged = bedwars.ItemMeta[Sword].sword.chargedAttack
         if not (charged.skipSwingDamage and chargeTime > (charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME)) then
@@ -18179,7 +18190,7 @@ run(function()
 
                 repeat
                     if entitylib.isAlive and store.equippedKit == 'lumen' and store.hand.tool and store.hand.tool.Name == Sword and tick() >= cooldown then
-                        local target = entitylib.EntityMouse({
+                        local target = entitylib.EntityPosition({
                             Origin = entitylib.character.RootPart.Position,
                             Range = Range.Value,
                             Part = 'RootPart',
@@ -18189,14 +18200,14 @@ run(function()
                         })
 
                         if target then
-                            chargedSwing()
+                            chargedSwing(target)
                         end
                     end
                     task.wait(0.1)
                 until not AutoLumen.Enabled
             end
         end,
-        Tooltip = 'Charges the sword of light and releases a wave whenever an enemy is in front of you, Killaura skips this sword because it has a charged attack'
+        Tooltip = 'Charges the sword of light and releases a wave whenever an enemy is in range, automatically aims at the nearest target'
     })
     Targets = AutoLumen:CreateTargets({
         Players = true,
