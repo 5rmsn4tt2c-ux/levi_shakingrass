@@ -18157,13 +18157,14 @@ run(function()
         local tool = store.hand.tool
         if not tool or tool.Name ~= Sword then return end
 
-        local charged = bedwars.ItemMeta[Sword] and bedwars.ItemMeta[Sword].sword and bedwars.ItemMeta[Sword].sword.chargedAttack
-        if not (charged and charged.skipSwingDamage and chargeTime > (charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME)) then
-            bedwars.SwordController:swingSwordAtMouse(chargeTime)
-        end
+        -- Send the charged swing to the server. In this build the light sword's beam is fired by
+        -- swingSwordAtMouse(chargeTime) itself (the same call the autoclicker uses; chargeTime
+        -- carries the charge amount), so ALWAYS send it. The source skipped this for
+        -- skipSwingDamage swords and relied on a SwordChargedSwing sync event -- but this build's
+        -- SyncEvents has no SwordChargedSwing, so nothing was ever sent and no wave fired.
+        bedwars.SwordController:swingSwordAtMouse(chargeTime)
 
-        -- Releasing the charged swing is what fires the lumen wave; guard the event in case
-        -- this build names it differently, so a missing event never crashes the module.
+        -- Also fire the charged-swing sync event when the build exposes it (harmless if absent).
         if bedwars.SyncEvents and bedwars.SyncEvents.SwordChargedSwing then
             bedwars.SyncEvents.SwordChargedSwing:fire(lplr, tool, {chargeTime = chargeTime})
         end
