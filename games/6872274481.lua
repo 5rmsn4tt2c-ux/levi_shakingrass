@@ -18131,13 +18131,13 @@ run(function()
     end
 
     local function chargedSwing()
-        -- bedwars auto-resolves unknown keys to Knit.Controllers, so SwordChargeController is
-        -- the real game controller (its getChargeState() worked). The earlier crash was only
-        -- bedwars.ChargeState -- that's an enum, not a controller, so it's nil here. Idle ==
-        -- getChargeStartTime() being 0, so use that as the guard instead of the missing enum.
+        -- Same charge/release flow as the source script. The original guarded with
+        -- `charge:getChargeState() ~= bedwars.ChargeState.Idle`, but bedwars.ChargeState is an
+        -- enum (not a Knit controller) so it's nil in this build -- that line crashed with
+        -- "index nil with 'Idle'". The guard is dropped entirely: this runs synchronously
+        -- inside the loop, so there is never an overlapping charge to guard against.
         local charge = bedwars.SwordChargeController
         if not charge then return end
-        if charge:getChargeStartTime() ~= 0 then return end
 
         charge:startCharging(Sword)
         local started = charge:getChargeStartTime()
