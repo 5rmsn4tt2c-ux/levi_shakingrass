@@ -21935,6 +21935,13 @@ run(function()
 
                 repeat
                     task.wait()
+                    -- don't hit while AutoLumen is actively charging the wave
+                    if store.equippedKit == 'lumen' then
+                        local ok, charging = pcall(function()
+                            return bedwars.SwordChargeController:getChargeState() ~= bedwars.ChargeState.Idle
+                        end)
+                        if ok and charging then continue end
+                    end
                     local sword, meta = getAttackData()
                     if sword then
                         local localPosition = entitylib.character.RootPart.Position
