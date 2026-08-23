@@ -1221,7 +1221,7 @@ run(function()
 		end
 	end
 
-	bedwars.breakBlock = function(block, effects, anim, customHealthbar, visualise, sort, angle, wallcheck)
+	bedwars.breakBlock = function(block, effects, anim, customHealthbar, visualise, sort, angle, wallcheck, keepTarget, noSwitch)
 		if lplr:GetAttribute('DenyBlockBreak') or not entitylib.isAlive or InfiniteFly.Enabled then return end
 
 		local handler = bedwars.BlockController:getHandlerRegistry():getHandler(block.Name)
@@ -1238,8 +1238,9 @@ run(function()
 			if (entitylib.character.RootPart.Position - pos).Magnitude > 30 then return end
 			local dblock, dpos = getPlacedBlock(pos)
 			if not dblock then return end
+			if keepTarget and dblock == block then return end
 
-			if (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) > 0.4 then
+			if not noSwitch and (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) > 0.4 then
 				local breaktype = dblock.Name == 'gumdrop_bounce_pad' and 'stone' or bedwars.ItemMeta[dblock.Name].block.breakType
 				local tool = store.tools[breaktype]
 				if tool then
@@ -4153,6 +4154,8 @@ run(function()
     local Targets
     local FOV
     local Sort
+    local Horizontal
+    local Vertical
     local OtherProjectiles
     local Blacklist
     local rayCheck = RaycastParams.new()
@@ -4466,7 +4469,21 @@ run(function()
     					-- Pass the target's RootPart so the prediction library can learn its per-target
     					-- motion (strafe/turn/jump/knockback) and apply latency compensation internally.
     					-- targetpos stays the aim part; the library derives the aim/root offset itself.
-    					local calc, predImpact, predTime = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos, projmeta.projectile == 'telepearl' and Vector3.zero or plr.RootPart.Velocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, nil, plr.RootPart)
+    					local targetVelocity = projmeta.projectile == 'telepearl' and Vector3.zero or plr.RootPart.Velocity
+    					local calc, predImpact, predTime = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos, targetVelocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, nil, plr.RootPart)
+    					-- Directional prediction: independently scale how far we lead the target
+    					-- sideways (Horizontal, the X/Z plane) vs while it rises or falls (Vertical, Y).
+    					-- 1 = the solver's own lead, <1 under-leads that axis, >1 over-leads it. We
+    					-- offset the aim point by the extra/less lead over the solved travel time and
+    					-- re-solve so gravity is recomputed for the new point.
+    					if calc and predTime and (Horizontal.Value ~= 1 or Vertical.Value ~= 1) then
+    						local lead = Vector3.new(
+    							targetVelocity.X * (Horizontal.Value - 1),
+    							targetVelocity.Y * (Vertical.Value - 1),
+    							targetVelocity.Z * (Horizontal.Value - 1)
+    						) * predTime
+    						calc = prediction.SolveTrajectory(newlook.p, projSpeed * Prediction.Value, gravity, targetpos + lead, targetVelocity, playerGravity, plr.HipHeight, plr.Jumping and 42.6 or nil, rayCheck, nil, plr.RootPart) or calc
+    					end
     					if calc then
     						if PADebug and PADebug.Enabled then
     							paDebugCapture(plr, offsetpos, targetpos, predImpact, predTime, projmeta)
@@ -4524,6 +4541,22 @@ run(function()
     	Min = 1,
     	Max = 1000,
     	Default = 1000,
+    })
+    Horizontal = ProjectileAimbot:CreateSlider({
+    	Name = 'Horizontal prediction',
+    	Min = 0,
+    	Max = 2,
+    	Default = 1,
+    	Decimal = 100,
+    	Tooltip = 'Scales how far ahead of the target you aim sideways',
+    })
+    Vertical = ProjectileAimbot:CreateSlider({
+    	Name = 'Vertical prediction',
+    	Min = 0,
+    	Max = 2,
+    	Default = 1,
+    	Decimal = 100,
+    	Tooltip = 'Scales how far ahead of the target you aim while it rises or falls',
     })
     AutoCharge = ProjectileAimbot:CreateToggle({
     	Name = 'Auto Charge',
@@ -15245,8 +15278,8 @@ run(function()
     local SelfBreak
     local InstantBreak
     local LimitItem
-    local Nuker
-    local Closet
+    local TargetLock
+    local targetGlow
     local customlist, parts = {}, {}
     
     local function customHealthbar(self, blockRef, health, maxHealth, changeHealth, block)
@@ -15348,44 +15381,100 @@ run(function()
             Size = UDim2.fromScale(newpercent, 1), BackgroundColor3 = Color3.fromHSV(math.clamp(newpercent / 2.5, 0, 1), 0.89, 0.75)
         }):Play()
     end
-    
+
     local hit = 0
-    
-    local function getMousePosition()
-    	local suc, mouseinfo = pcall(function()
-            return bedwars.BlockBreaker.clientManager:getBlockSelector():getMouseInfo(0)
-        end)
-    
-        if suc and mouseinfo then
-            if mouseinfo.target and mouseinfo.target.blockRef then
-                return mouseinfo.target.blockRef.blockPosition * 3
-            end
-            if mouseinfo.placementPosition then
-                return mouseinfo.placementPosition * 3
+
+    local losFilter
+    local function refreshFilter()
+        if not losFilter then
+            losFilter = RaycastParams.new()
+            losFilter.FilterType = Enum.RaycastFilterType.Include
+            losFilter.RespectCanCollide = false
+        end
+        local list = {}
+        for _, b in store.blocks do
+            if b and b.Parent then table.insert(list, b) end
+        end
+        losFilter.FilterDescendantsInstances = list
+    end
+
+    local function isVisible(worldPos)
+        local eye = gameCamera.CFrame.Position
+        for _, off in {
+            Vector3.zero,
+            Vector3.new(1.35, 0, 0), Vector3.new(-1.35, 0, 0),
+            Vector3.new(0, 1.35, 0), Vector3.new(0, -1.35, 0),
+            Vector3.new(0, 0, 1.35), Vector3.new(0, 0, -1.35)
+        } do
+            local probe = worldPos + off
+            local ray = probe - eye
+            local res = workspace:Raycast(eye, ray, losFilter)
+            if not res then return true end
+            if (res.Position - eye).Magnitude >= ray.Magnitude - 1.5 then return true end
+            if res.Instance and (res.Instance.Position - worldPos).Magnitude < 2.5 then return true end
+        end
+        return false
+    end
+
+    local function isBedVisible(bed)
+        local handler = bedwars.BlockController:getHandlerRegistry():getHandler(bed.Name)
+        local positions = handler and handler:getContainedPositions(bed) or {bed.Position / 3}
+        for _, gridPos in positions do
+            if isVisible(gridPos * 3) then return true end
+        end
+        return false
+    end
+
+    -- The placed block standing between the camera and the bed. Breaking it opens the sightline.
+    local function firstOccluder(bed)
+        local eye = gameCamera.CFrame.Position
+        local handler = bedwars.BlockController:getHandlerRegistry():getHandler(bed.Name)
+        local positions = handler and handler:getContainedPositions(bed) or {bed.Position / 3}
+        for _, gridPos in positions do
+            local worldPos = gridPos * 3
+            local res = workspace:Raycast(eye, worldPos - eye, losFilter)
+            if res and res.Instance and res.Instance ~= bed then
+                return res.Instance
             end
         end
         return nil
     end
-    
-    local cache, cacheExpire = nil, 0
-    local function closetMethod(block)
-        if tick() > cacheExpire or not cache then
-            cache = getMousePosition() or entitylib.character.RootPart.Position
-            cacheExpire = tick() + 0.01
-        end
-        return (cache - block.Position).Magnitude
+
+    -- True only when the currently held tool can actually break this block (e.g. a pickaxe for iron ore).
+    local function holdingToolFor(block)
+        local meta = bedwars.ItemMeta[block.Name]
+        local breaktype = meta and meta.block and meta.block.breakType
+        local heldMeta = store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name]
+        return breaktype and heldMeta and heldMeta.breakBlock and (heldMeta.breakBlock[breaktype] or 0) > 0
     end
-    
-    local function attemptBreak(tab, localPosition)
+
+    local function attemptBreak(tab, localPosition, visGate, heldOnly)
         if not tab then return end
+        if visGate then refreshFilter() end
         for _, v in tab do
             if (v.Position - localPosition).Magnitude < Range.Value and bedwars.BlockController:isBlockBreakable({blockPosition = v.Position / 3}, lplr) then
                 if not SelfBreak.Enabled and v:GetAttribute('PlacedByUserId') == lplr.UserId then continue end
                 if (v:GetAttribute('BedShieldEndTime') or 0) > workspace:GetServerTimeNow() then continue end
                 if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then continue end
+                -- Iron ore: never force-swap to the pickaxe; only mine while it is already in hand.
+                if heldOnly and not holdingToolFor(v) then continue end
     
                 hit = hit + 1
-                local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, Closet.Enabled and closetMethod or breakmethods[Mode.Value], Angle.Value, not Nuker.Enabled)
+                -- Bed target: only strike the bed itself once it is visible from the camera. While it is
+                -- exposed but still hidden, break whatever block is blocking our line of sight so a hole we
+                -- can actually see through keeps opening; only fall back to clearing defense if none is found.
+                local breakTarget, useWall, protect = v, true, false
+                if visGate and not isBedVisible(v) then
+                    local occ = firstOccluder(v)
+                    if occ then
+                        breakTarget, useWall, protect = occ, false, false
+                    else
+                        protect = true
+                    end
+                end
+                -- Target Lock: glow the block we're currently locked onto and breaking (ported from KingDraco).
+                if targetGlow then targetGlow.Adornee = breakTarget end
+                local target, path, endpos = bedwars.breakBlock(breakTarget, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, breakmethods[Mode.Value], Angle.Value, useWall, protect, heldOnly)
                 if path then
                     local currentnode = target
                     for _, part in parts do
@@ -15426,7 +15515,16 @@ run(function()
                     highlight.Parent = part
                     table.insert(parts, part)
                 end
-    
+
+                -- Target Lock glow: locks a red highlight onto the block being broken (ported from KingDraco).
+                targetGlow = Instance.new('Highlight')
+                targetGlow.FillTransparency = 0.75
+                targetGlow.OutlineTransparency = 0
+                targetGlow.FillColor = Color3.fromRGB(255, 80, 80)
+                targetGlow.OutlineColor = Color3.fromRGB(255, 200, 200)
+                targetGlow.Enabled = TargetLock.Enabled
+                targetGlow.Parent = gameCamera
+
                 local beds = collection('bed', Breaker)
                 local luckyblock = collection('LuckyBlock', Breaker)
                 local ironores = collection('iron_ore_mesh_block', Breaker)
@@ -15459,7 +15557,7 @@ run(function()
                     if entitylib.isAlive then
                         local localPosition = entitylib.character.RootPart.Position
     
-                        if attemptBreak(Bed.Enabled and beds, localPosition) then continue end
+                        if attemptBreak(Bed.Enabled and beds, localPosition, true) then continue end
                         if attemptBreak(Tesla.Enabled and teslas, localPosition) then continue end
                         if attemptBreak(Hive.Enabled and hives, localPosition) then continue end
                         if attemptBreak(customlist, localPosition) then continue end
@@ -15482,13 +15580,14 @@ run(function()
                                         table.insert(baseOres, ore)
                                     end
                                 end
-                                if attemptBreak(baseOres, localPosition) then continue end
+                                if attemptBreak(baseOres, localPosition, nil, true) then continue end
                             end
                         end
     
                         for _, v in parts do
                             v.Position = Vector3.zero
                         end
+                        if targetGlow then targetGlow.Adornee = nil end
                     end
                 until not Breaker.Enabled
             else
@@ -15497,6 +15596,7 @@ run(function()
                     v:Destroy()
                 end
                 table.clear(parts)
+                if targetGlow then targetGlow:Destroy() targetGlow = nil end
             end
         end,
         Tooltip = 'Break blocks around you automatically'
@@ -15590,20 +15690,20 @@ run(function()
     SelfBreak = Breaker:CreateToggle({Name = 'Self Break'})
     InstantBreak = Breaker:CreateToggle({Name = 'Instant Break'})
     AutoTool = Breaker:CreateToggle({Name = 'Auto Tool'})
-    Nuker = Breaker:CreateToggle({
-        Name = 'Break through blocks',
-        Tooltip = 'Ignores blocks around bed defense, and check if the server validates where ur breaking'
-    })
-    Closet =  Breaker:CreateToggle({
-        Name = 'Closest break',
-        Tooltip = 'Uses ur mouse\'s position to get the closet block to you',
-        Function = function(callback)
-            Mode.Object.Visible = not callback
-        end
-    })
     LimitItem = Breaker:CreateToggle({
         Name = 'Limit to items',
         Tooltip = 'Only breaks when tools are held'
+    })
+    TargetLock = Breaker:CreateToggle({
+        Name = 'Target Lock',
+        Tooltip = 'Glows the block you are currently locked onto and breaking (ported from KingDraco)',
+        Default = true,
+        Function = function(callback)
+            if targetGlow then
+                targetGlow.Enabled = callback
+                if not callback then targetGlow.Adornee = nil end
+            end
+        end
     })
 end)
 
@@ -18027,6 +18127,108 @@ run(function()
     	Decimal = 10,
     	Tooltip = 'Delay between triggers'
     })
+end)
+
+run(function()
+    local AutoLumen
+    local Targets
+    local Range
+    local FullCharge
+    local Delay
+
+    local Balance = bedwars.LumenBalance or {MIN_CHARGE_TIME = 0.65, MAX_CHARGE_TIME = 1.25}
+    local Sword = 'light_sword'
+    local cooldown = 0
+
+    local function getChargeTime()
+        local itemmeta = bedwars.ItemMeta[Sword]
+        local charged = itemmeta and itemmeta.sword and itemmeta.sword.chargedAttack
+        local minimum = charged and charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME
+        local maximum = charged and charged.maxChargeTimeSec or Balance.MAX_CHARGE_TIME
+        return FullCharge.Enabled and maximum or minimum
+    end
+
+    local function chargedSwing()
+        local charge = bedwars.SwordChargeController
+        if charge:getChargeState() ~= bedwars.ChargeState.Idle then return end
+
+        charge:startCharging(Sword)
+        local started = charge:getChargeStartTime()
+        if started == 0 then return end
+
+        local target = getChargeTime() + 0.05
+        repeat task.wait() until not AutoLumen.Enabled or not entitylib.isAlive or (tick() - started) >= target
+
+        local chargeTime = tick() - started
+        charge:stopCharging(Sword)
+        if not AutoLumen.Enabled or not entitylib.isAlive then return end
+
+        local tool = store.hand.tool
+        if not tool or tool.Name ~= Sword then return end
+
+        local charged = bedwars.ItemMeta[Sword].sword.chargedAttack
+        if not (charged.skipSwingDamage and chargeTime > (charged.minChargeTimeSec or Balance.MIN_CHARGE_TIME)) then
+            bedwars.SwordController:swingSwordAtMouse(chargeTime)
+        end
+
+        bedwars.SyncEvents.SwordChargedSwing:fire(lplr, tool, {chargeTime = chargeTime})
+        cooldown = tick() + Delay.Value
+    end
+
+    AutoLumen = vape.Categories.Kits:CreateModule({
+        Name = 'AutoLumen',
+        Function = function(callback)
+            if callback then
+                cooldown = 0
+
+                repeat
+                    if entitylib.isAlive and store.equippedKit == 'lumen' and store.hand.tool and store.hand.tool.Name == Sword and tick() >= cooldown then
+                        local target = entitylib.EntityMouse({
+                            Origin = entitylib.character.RootPart.Position,
+                            Range = Range.Value,
+                            Part = 'RootPart',
+                            Players = Targets.Players.Enabled,
+                            NPCs = Targets.NPCs.Enabled,
+                            Wallcheck = Targets.Walls.Enabled
+                        })
+
+                        if target then
+                            chargedSwing()
+                        end
+                    end
+                    task.wait(0.1)
+                until not AutoLumen.Enabled
+            end
+        end,
+        Tooltip = 'Charges the sword of light and releases a wave whenever an enemy is in front of you, Killaura skips this sword because it has a charged attack'
+    })
+    Targets = AutoLumen:CreateTargets({
+        Players = true,
+        Walls = true
+    })
+    Range = AutoLumen:CreateSlider({
+        Name = 'Range',
+        Min = 1,
+        Max = 120,
+        Default = 60,
+        Suffix = function(val)
+            return val <= 1 and 'stud' or 'studs'
+        end
+    })
+    FullCharge = AutoLumen:CreateToggle({
+        Name = 'Full charge',
+        Default = true,
+        Tooltip = 'Holds the swing to the maximum charge, an upgraded lumen only fires the multi beam at full charge'
+    })
+    Delay = AutoLumen:CreateSlider({
+        Name = 'Delay',
+        Min = 0,
+        Max = 2,
+        Default = 0.1,
+        Decimal = 100,
+        Suffix = 'seconds'
+    })
+
 end)
 
 run(function()
@@ -21737,6 +21939,13 @@ run(function()
 
                 repeat
                     task.wait()
+                    -- don't hit while AutoLumen is actively charging the wave
+                    if store.equippedKit == 'lumen' then
+                        local ok, charging = pcall(function()
+                            return bedwars.SwordChargeController:getChargeState() ~= bedwars.ChargeState.Idle
+                        end)
+                        if ok and charging then continue end
+                    end
                     local sword, meta = getAttackData()
                     if sword then
                         local localPosition = entitylib.character.RootPart.Position
