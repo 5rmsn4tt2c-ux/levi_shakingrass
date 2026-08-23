@@ -153,15 +153,20 @@ if not shared.VapeIndependent then
 	dbg('universal.lua loaded OK')
 
 	dbg('loading game file: games/' .. tostring(game.PlaceId) .. '.lua')
-	local suc, err = pcall(function()
-		-- Restore Plugin-level identity inside pcall — executor variants use different names
-		if setthreadidentity then pcall(setthreadidentity, 8)
-		elseif setidentity then pcall(setidentity, 8)
-		elseif syn and syn.set_thread_identity then pcall(syn.set_thread_identity, 8)
-		elseif (getgenv and getgenv().setthreadidentity) then pcall(getgenv().setthreadidentity, 8)
-		end
-		loadstring(downloadFile('levi_shakingrass/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))()
-	end)
+	-- If no identity-restore function exists, pcall resets thread identity and blocks
+	-- Instance.new. In that case skip pcall so the game file runs at the current
+	-- (Plugin-level) thread identity. Errors will surface via the executor's output.
+	local _identityFn = setthreadidentity or setidentity or (syn and syn.set_thread_identity) or (getgenv and getgenv().setthreadidentity)
+	local suc, err
+	if _identityFn then
+		suc, err = pcall(function()
+			pcall(_identityFn, 8)
+			loadstring(downloadFile('levi_shakingrass/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))()
+		end)
+	else
+		-- No identity function: run directly so Plugin-level identity is preserved
+		suc, err = pcall(loadstring(downloadFile('levi_shakingrass/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId)))
+	end
 	if not suc then
 		dbg('GAME FILE FAILED: ' .. tostring(err))
 		vape:CreateNotification('Milyonpuffnoodles', 'Game file failed: '..tostring(err), 10, 'warning')
