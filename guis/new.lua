@@ -1,4 +1,6 @@
 local license = ... or {}
+-- One module-level variable covering all executor identity-function names
+local _setIdentity = setthreadidentity or setidentity or (syn and syn.set_thread_identity) or (getgenv and getgenv().setthreadidentity)
 local mainapi = {
 	Categories = {},
 	GUIColor = {
@@ -18,8 +20,7 @@ local mainapi = {
 	RainbowUpdateSpeed = {Value = 60},
 	RainbowTable = {},
 	Scale = {Value = 1},
-	ThreadFix = setthreadidentity or setidentity or (syn and syn.set_thread_identity) or (getgenv and getgenv().setthreadidentity) or false,
-	FixIdentity = setthreadidentity or setidentity or (syn and syn.set_thread_identity) or (getgenv and getgenv().setthreadidentity) or nil,
+	ThreadFix = _setIdentity and true or false,
 	ToggleNotifications = {},
 	Version = '4.18',
 	ToggleMode = {Value = 'Toggle'},
@@ -1618,7 +1619,7 @@ components = {
 		end)
 		textlist:GetPropertyChangedSignal('AbsolutePosition'):Connect(function()
 			if mainapi.ThreadFix then
-				pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+				pcall(_setIdentity, 8)
 			end
 			local actualPosition = (textlist.AbsolutePosition + Vector2.new(0, 60)) / scale.Scale
 			window.Position = UDim2.fromOffset(actualPosition.X + 220, actualPosition.Y)
@@ -2128,7 +2129,7 @@ components = {
 		end)
 		textlist:GetPropertyChangedSignal('AbsolutePosition'):Connect(function()
 			if mainapi.ThreadFix then
-				pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+				pcall(_setIdentity, 8)
 			end
 			local actualPosition = (textlist.AbsolutePosition - (api.Legit and mainapi.Legit.Window.AbsolutePosition or -guiService:GetGuiInset())) / scale.Scale
 			window.Position = UDim2.fromOffset(actualPosition.X + 220, actualPosition.Y)
@@ -2526,7 +2527,7 @@ end)
 
 function mainapi:BlurCheck()
 	if self.ThreadFix and not inputService.TouchEnabled then
-		pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+		pcall(_setIdentity, 8)
 		runService:SetRobloxGuiFocused((clickgui.Visible or guiService:GetErrorType() ~= Enum.ConnectionError.OK) and self.Blur.Enabled)
 	end
 end
@@ -3055,7 +3056,7 @@ function mainapi:CreateGUI()
 		end)
 		windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
 			if mainapi.ThreadFix then
-				pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+				pcall(_setIdentity, 8)
 			end
 			window.Size = UDim2.fromOffset(220, math.min(37 + windowlist.AbsoluteContentSize.Y / scale.Scale, 605))
 			childrentoggle.Size = UDim2.fromOffset(220, window.Size.Y.Offset - 5)
@@ -3171,7 +3172,7 @@ function mainapi:CreateGUI()
 		end)
 		windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
 			if mainapi.ThreadFix then
-				pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+				pcall(_setIdentity, 8)
 			end
 			window.Size = UDim2.fromOffset(220, 45 + windowlist.AbsoluteContentSize.Y / scale.Scale)
 			for _, v in categoryapi.Buttons do
@@ -3699,8 +3700,8 @@ function mainapi:CreateGUI()
 		settingspane.Visible = true
 	end)
 	windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-		if self.FixIdentity then
-			pcall(self.FixIdentity, 8)
+		if _setIdentity then
+			pcall(_setIdentity, 8)
 		end
 		window.Size = UDim2.fromOffset(220, 42 + windowlist.AbsoluteContentSize.Y / scale.Scale)
 		for _, v in categoryapi.Buttons do
@@ -3995,7 +3996,7 @@ function mainapi:CreateCategory(categorysettings)
 
 		function moduleapi:Toggle(multiple)
 			if mainapi.ThreadFix then
-				pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+				pcall(_setIdentity, 8)
 			end
 			self.Enabled = not self.Enabled
 			divider.Visible = self.Enabled
@@ -4093,7 +4094,7 @@ function mainapi:CreateCategory(categorysettings)
 				until (tick() - holdtime) > 1 or not heldbutton or not clickgui.Visible
 				if heldbutton and clickgui.Visible then
 					if mainapi.ThreadFix then
-						pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+						pcall(_setIdentity, 8)
 					end
 					clickgui.Visible = false
 					tooltip.Visible = false
@@ -4108,7 +4109,7 @@ function mainapi:CreateCategory(categorysettings)
 					touchconnection = inputService.InputBegan:Connect(function(inputType)
 						if inputType.UserInputType == Enum.UserInputType.Touch then
 							if mainapi.ThreadFix then
-								pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+								pcall(_setIdentity, 8)
 							end
 							createMobileButton(moduleapi, inputType.Position + Vector3.new(0, guiService:GetGuiInset().Y, 0))
 							clickgui.Visible = true
@@ -4129,7 +4130,7 @@ function mainapi:CreateCategory(categorysettings)
 		end
 		windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
 			if mainapi.ThreadFix then
-				pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+				pcall(_setIdentity, 8)
 			end
 			modulechildren.Size = UDim2.new(1, 0, 0, windowlist.AbsoluteContentSize.Y / scale.Scale)
 		end)
@@ -4176,8 +4177,8 @@ function mainapi:CreateCategory(categorysettings)
 		arrow.ImageColor3 = Color3.fromRGB(140, 140, 140)
 	end)
 	children:GetPropertyChangedSignal('CanvasPosition'):Connect(function()
-		if self.FixIdentity then
-			pcall(self.FixIdentity, 8)
+		if _setIdentity then
+			pcall(_setIdentity, 8)
 		end
 		divider.Visible = children.CanvasPosition.Y > 10 and children.Visible
 	end)
@@ -4187,8 +4188,8 @@ function mainapi:CreateCategory(categorysettings)
 		end
 	end)
 	windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-		if self.FixIdentity then
-			pcall(self.FixIdentity, 8)
+		if _setIdentity then
+			pcall(_setIdentity, 8)
 		end
 		children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / scale.Scale)
 		if categoryapi.Expanded then
@@ -4387,8 +4388,8 @@ function mainapi:CreateOverlay(categorysettings)
 		categoryapi:Expand(true)
 	end)
 	windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-		if self.FixIdentity then
-			pcall(self.FixIdentity, 8)
+		if _setIdentity then
+			pcall(_setIdentity, 8)
 		end
 		children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / scale.Scale)
 		if categoryapi.Expanded then
@@ -4396,7 +4397,7 @@ function mainapi:CreateOverlay(categorysettings)
 		end
 	end)
 	self:Clean(clickgui:GetPropertyChangedSignal('Visible'):Connect(function()
-		if mainapi.FixIdentity then pcall(mainapi.FixIdentity, 8) end
+		if _setIdentity then pcall(_setIdentity, 8) end
 		pcall(function() categoryapi:Update() end)
 	end))
 
@@ -4802,7 +4803,7 @@ function mainapi:CreateCategoryList(categorysettings)
 				objecttitle.FontFace = uipallet.Font
 				objecttitle.Parent = object
 				if mainapi.ThreadFix then
-					pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+					pcall(_setIdentity, 8)
 				end
 				local close = Instance.new('ImageButton')
 				close.Name = 'Close'
@@ -4940,8 +4941,8 @@ function mainapi:CreateCategoryList(categorysettings)
 		end
 	end)
 	windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-		if self.FixIdentity then
-			pcall(self.FixIdentity, 8)
+		if _setIdentity then
+			pcall(_setIdentity, 8)
 		end
 		children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / scale.Scale)
 		if categoryapi.Expanded then
@@ -4949,8 +4950,8 @@ function mainapi:CreateCategoryList(categorysettings)
 		end
 	end)
 	windowlisttwo:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-		if self.FixIdentity then
-			pcall(self.FixIdentity, 8)
+		if _setIdentity then
+			pcall(_setIdentity, 8)
 		end
 		childrentwo.Size = UDim2.fromOffset(220, windowlisttwo.AbsoluteContentSize.Y)
 	end)
@@ -5094,8 +5095,8 @@ function mainapi:CreateSearch()
 		end
 	end)
 	windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-		if self.FixIdentity then
-			pcall(self.FixIdentity, 8)
+		if _setIdentity then
+			pcall(_setIdentity, 8)
 		end
 		children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / scale.Scale)
 		searchbkg.Size = UDim2.fromOffset(220, math.min(37 + windowlist.AbsoluteContentSize.Y / scale.Scale, 437))
@@ -5472,7 +5473,7 @@ function mainapi:CreateLegit()
 		end)
 		settingswindowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
 			if mainapi.ThreadFix then
-				pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+				pcall(_setIdentity, 8)
 			end
 			settingschildren.CanvasSize = UDim2.fromOffset(0, settingswindowlist.AbsoluteContentSize.Y / scale.Scale)
 		end)
@@ -5517,19 +5518,19 @@ function mainapi:CreateLegit()
 		clickgui.Visible = true
 	end)
 	self:Clean(clickgui:GetPropertyChangedSignal('Visible'):Connect(function()
-		if mainapi.FixIdentity then pcall(mainapi.FixIdentity, 8) end
+		if _setIdentity then pcall(_setIdentity, 8) end
 		pcall(visibleCheck)
 	end))
 	window:GetPropertyChangedSignal('Visible'):Connect(function()
-		if mainapi.FixIdentity then pcall(mainapi.FixIdentity, 8) end
+		if _setIdentity then pcall(_setIdentity, 8) end
 		pcall(function()
 			self:UpdateGUI(self.GUIColor.Hue, self.GUIColor.Sat, self.GUIColor.Value)
 			visibleCheck()
 		end)
 	end)
 	windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
-		if self.FixIdentity then
-			pcall(self.FixIdentity, 8)
+		if _setIdentity then
+			pcall(_setIdentity, 8)
 		end
 		children.CanvasSize = UDim2.fromOffset(0, windowlist.AbsoluteContentSize.Y / scale.Scale)
 	end)
@@ -5570,8 +5571,8 @@ function mainapi:CreateNotification(title, text, duration, type)
 		return
 	end
 	task.delay(0, function()
-		if self.FixIdentity then
-			pcall(self.FixIdentity, 8)
+		if _setIdentity then
+			pcall(_setIdentity, 8)
 		end
 		local i = #notifications:GetChildren() + 1
 		local notification = Instance.new('ImageLabel')
@@ -5662,8 +5663,8 @@ end
 
 local guipane
 function mainapi:Load(skipgui, profile)
-	if self.FixIdentity then
-		pcall(self.FixIdentity, 8)
+	if _setIdentity then
+		pcall(_setIdentity, 8)
 	end
 	if not skipgui then
 		self.GUIColor:SetValue(nil, nil, nil, 4)
@@ -5823,8 +5824,8 @@ function mainapi:Load(skipgui, profile)
 		self.VapeButton = button
 		mainapi:Clean(button)
 		button.MouseButton1Click:Connect(function()
-			if self.FixIdentity then
-				pcall(self.FixIdentity, 8)
+			if _setIdentity then
+				pcall(_setIdentity, 8)
 			end
 			for _, v in self.Windows do
 				v.Visible = false
@@ -5865,8 +5866,8 @@ function mainapi:Remove(obj)
 	local tab = (self.Modules[obj] and self.Modules or self.Legit.Modules[obj] and self.Legit.Modules or self.Categories)
 	if tab and tab[obj] then
 		local newobj = tab[obj]
-		if self.FixIdentity then
-			pcall(self.FixIdentity, 8)
+		if _setIdentity then
+			pcall(_setIdentity, 8)
 		end
 
 		for _, v in {'Object', 'Children', 'Toggle', 'Button'} do
@@ -5962,7 +5963,7 @@ function mainapi:Uninject()
 		end)
 	end
 	if mainapi.ThreadFix then
-		pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+		pcall(_setIdentity, 8)
 		clickgui.Visible = false
 		mainapi:BlurCheck()
 	end
@@ -6068,7 +6069,7 @@ mainapi:Clean(scale:GetPropertyChangedSignal('Scale'):Connect(function()
 end))
 
 mainapi:Clean(clickgui:GetPropertyChangedSignal('Visible'):Connect(function()
-	if mainapi.FixIdentity then pcall(mainapi.FixIdentity, 8) end
+	if _setIdentity then pcall(_setIdentity, 8) end
 	pcall(function()
 		mainapi:UpdateGUI(mainapi.GUIColor.Hue, mainapi.GUIColor.Sat, mainapi.GUIColor.Value, true)
 		if clickgui.Visible and inputService.MouseEnabled then
@@ -6784,7 +6785,7 @@ VapeLogoGrad.Parent = VapeLogo
 local lastside = textgui.Children.AbsolutePosition.X > (gui.AbsoluteSize.X / 2)
 mainapi:Clean(textgui.Children:GetPropertyChangedSignal('AbsolutePosition'):Connect(function()
 	if mainapi.ThreadFix then
-		pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+		pcall(_setIdentity, 8)
 	end
 	local newside = textgui.Children.AbsolutePosition.X > (gui.AbsoluteSize.X / 2)
 	if lastside ~= newside then
@@ -7381,7 +7382,7 @@ local function keybindStart(inputObj)
 
 		if checkKeybinds(mainapi.HeldKeybinds, mainapi.Keybind, inputObj.KeyCode.Name) then
 			if mainapi.ThreadFix then
-				pcall(self.FixIdentity or mainapi.FixIdentity or setthreadidentity, 8)
+				pcall(_setIdentity, 8)
 			end
 			for _, v in mainapi.Windows do
 				v.Visible = false
