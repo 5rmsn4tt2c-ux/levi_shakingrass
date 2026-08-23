@@ -1,3 +1,6 @@
+-- Restore Plugin-level thread identity on executors that reset it inside pcall
+if setthreadidentity then pcall(setthreadidentity, 8) end
+
 local canDebug = true
 local VERSION = 42
 local run = function(func)
@@ -6,15 +9,19 @@ end
 local cloneref = cloneref or function(obj)
 	return obj
 end
+local function safeInstance(class)
+	local ok, r = pcall(Instance.new, class)
+	return ok and r or nil
+end
 local vapeEvents = setmetatable({
-	EntityDamageEvent = Instance.new('BindableEvent')
+	EntityDamageEvent = safeInstance('BindableEvent')
 }, {
 	__index = function(self, index)
-		self[index] = Instance.new('BindableEvent')
+		self[index] = safeInstance('BindableEvent')
 		return self[index]
 	end
 })
-shared.bindable = Instance.new('BindableEvent')
+shared.bindable = safeInstance('BindableEvent')
 getgenv().vapeEvents = vapeEvents
 
 local playersService = cloneref(game:GetService('Players'))
