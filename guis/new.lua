@@ -4395,7 +4395,8 @@ function mainapi:CreateOverlay(categorysettings)
 		end
 	end)
 	self:Clean(clickgui:GetPropertyChangedSignal('Visible'):Connect(function()
-		categoryapi:Update()
+		if mainapi.ThreadFix then pcall(setthreadidentity, 8) end
+		pcall(function() categoryapi:Update() end)
 	end))
 
 	categoryapi:Update()
@@ -5514,10 +5515,16 @@ function mainapi:CreateLegit()
 		window.Visible = false
 		clickgui.Visible = true
 	end)
-	self:Clean(clickgui:GetPropertyChangedSignal('Visible'):Connect(visibleCheck))
+	self:Clean(clickgui:GetPropertyChangedSignal('Visible'):Connect(function()
+		if mainapi.ThreadFix then pcall(setthreadidentity, 8) end
+		pcall(visibleCheck)
+	end))
 	window:GetPropertyChangedSignal('Visible'):Connect(function()
-		self:UpdateGUI(self.GUIColor.Hue, self.GUIColor.Sat, self.GUIColor.Value)
-		visibleCheck()
+		if mainapi.ThreadFix then pcall(setthreadidentity, 8) end
+		pcall(function()
+			self:UpdateGUI(self.GUIColor.Hue, self.GUIColor.Sat, self.GUIColor.Value)
+			visibleCheck()
+		end)
 	end)
 	windowlist:GetPropertyChangedSignal('AbsoluteContentSize'):Connect(function()
 		if self.ThreadFix then
@@ -6060,25 +6067,28 @@ mainapi:Clean(scale:GetPropertyChangedSignal('Scale'):Connect(function()
 end))
 
 mainapi:Clean(clickgui:GetPropertyChangedSignal('Visible'):Connect(function()
-	mainapi:UpdateGUI(mainapi.GUIColor.Hue, mainapi.GUIColor.Sat, mainapi.GUIColor.Value, true)
-	if clickgui.Visible and inputService.MouseEnabled then
-		repeat
-			local visibleCheck = clickgui.Visible
-			for _, v in mainapi.Windows do
-				visibleCheck = visibleCheck or v.Visible
-			end
-			if not visibleCheck then break end
+	if mainapi.ThreadFix then pcall(setthreadidentity, 8) end
+	pcall(function()
+		mainapi:UpdateGUI(mainapi.GUIColor.Hue, mainapi.GUIColor.Sat, mainapi.GUIColor.Value, true)
+		if clickgui.Visible and inputService.MouseEnabled then
+			repeat
+				local visibleCheck = clickgui.Visible
+				for _, v in mainapi.Windows do
+					visibleCheck = visibleCheck or v.Visible
+				end
+				if not visibleCheck then break end
 
-			cursor.Visible = not inputService.MouseIconEnabled
-			if cursor.Visible then
-				local mouseLocation = inputService:GetMouseLocation()
-				cursor.Position = UDim2.fromOffset(mouseLocation.X - 31, mouseLocation.Y - 32)
-			end
+				cursor.Visible = not inputService.MouseIconEnabled
+				if cursor.Visible then
+					local mouseLocation = inputService:GetMouseLocation()
+					cursor.Position = UDim2.fromOffset(mouseLocation.X - 31, mouseLocation.Y - 32)
+				end
 
-			task.wait()
-		until mainapi.Loaded == nil
-		cursor.Visible = false
-	end
+				task.wait()
+			until mainapi.Loaded == nil
+			cursor.Visible = false
+		end
+	end)
 end))
 
 mainapi:CreateGUI()
