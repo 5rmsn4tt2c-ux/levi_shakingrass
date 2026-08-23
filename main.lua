@@ -154,6 +154,12 @@ if not shared.VapeIndependent then
 
 	dbg('loading game file: games/' .. tostring(game.PlaceId) .. '.lua')
 	local suc, err = pcall(function()
+		-- Restore Plugin-level identity inside pcall — executor variants use different names
+		if setthreadidentity then pcall(setthreadidentity, 8)
+		elseif setidentity then pcall(setidentity, 8)
+		elseif syn and syn.set_thread_identity then pcall(syn.set_thread_identity, 8)
+		elseif (getgenv and getgenv().setthreadidentity) then pcall(getgenv().setthreadidentity, 8)
+		end
 		loadstring(downloadFile('levi_shakingrass/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))()
 	end)
 	if not suc then
