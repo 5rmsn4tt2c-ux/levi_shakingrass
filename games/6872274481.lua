@@ -15606,7 +15606,7 @@ end)
 run(function()
     local KingDraco
     local RangeSetting, SpeedSetting, TickRate, BreakMode
-    local ToolSwitch, ItemLimit, BreakSelf, QuickBreak, StickyLock, BaseOre, BreakerFallback, DebugMode
+    local ToolSwitch, ItemLimit, BreakSelf, QuickBreak, BaseOre, BreakerFallback, DebugMode
     local EffectsOn, HealthDisplay, Anim, PathOverlay
 
     local hp = {gui = nil, fill = nil, block = nil, current = -1, max = -1}
@@ -16141,23 +16141,6 @@ run(function()
                         end
                     end
 
-                    -- Sticky lock: skip route re-evaluation and keep hitting the same block until it's gone
-                    if StickyLock and StickyLock.Enabled and store._lockedDefenseBlock then
-                        local locked = store._lockedDefenseBlock
-                        if locked.Parent and not locked:GetAttribute('NoBreak') then
-                            if isVisible(locked.Position) and (locked.Position - origin).Magnitude <= RangeSetting.Value then
-                                targetGlow.Adornee = locked
-                                equipFor(locked)
-                                strike(locked)
-                                if DebugMode and DebugMode.Enabled then dbg('[KD] sticky: holding ' .. locked.Name) end
-                                task.wait(QuickBreak.Enabled and 0 or SpeedSetting.Value)
-                                continue
-                            end
-                        else
-                            store._lockedDefenseBlock = nil
-                        end
-                    end
-
                     freshEntry, freshRoute, freshAnchor, freshCost = planAttack(bestBed, origin)
 
                     useStored = false
@@ -16312,10 +16295,6 @@ run(function()
     })
     BreakSelf = KingDraco:CreateToggle({Name = 'Self break'})
     QuickBreak = KingDraco:CreateToggle({Name = 'Instant break'})
-    StickyLock = KingDraco:CreateToggle({
-        Name = 'Sticky lock',
-        Tooltip = 'Once locked onto a block, keeps breaking it until destroyed — never switches mid-break even if a cheaper path appears'
-    })
     BaseOre = KingDraco:CreateToggle({
         Name = 'Base ore',
         Tooltip = 'Mines iron ore near your own bed when idle'
