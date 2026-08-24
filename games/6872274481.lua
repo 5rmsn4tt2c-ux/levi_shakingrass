@@ -9899,6 +9899,129 @@ run(function()
 end)
 
 run(function()
+	local AutoRanking
+	local ARTargets
+	local ARRange
+	local ARRate
+	local ARDelay
+	local ARSwitch
+	local ARWeapons
+
+	local arFireRate = {}
+
+	local function getBow()
+		for _, item in store.inventory.inventory.items do
+			local meta = bedwars.ItemMeta[item.itemType]
+			local proj = meta and meta.projectileSource
+			if not proj then continue end
+
+			-- Check if item type matches the weapons list
+			local name = item.itemType
+			local matched = false
+			for _, w in ARWeapons.ListEnabled do
+				if name:find(w) then matched = true break end
+			end
+			if not matched then continue end
+
+			-- Check ammo (headhunter fires without ammo slot)
+			local hasAmmo = name:find('headhunter') and true or false
+			if not hasAmmo then
+				for _, inv in store.inventory.inventory.items do
+					if proj.ammoItemTypes and table.find(proj.ammoItemTypes, inv.itemType) then
+						hasAmmo = true
+						break
+					end
+				end
+			end
+			if not hasAmmo then continue end
+
+			-- Respect per-weapon fire rate
+			if (arFireRate[name] or 0) > tick() then continue end
+
+			local hotbar = getHotbar(item.tool)
+			if hotbar then
+				return item, hotbar, proj
+			end
+		end
+	end
+
+	AutoRanking = vape.Categories.Combat:CreateModule({
+		Name = 'Auto Ranking',
+		Function = function(callback)
+			if callback then
+				repeat
+					if entitylib.isAlive then
+						local target = entitylib.EntityPosition({
+							Part = 'RootPart',
+							Range = ARRange.Value,
+							Players = ARTargets.Players.Enabled,
+							NPCs = ARTargets.NPCs.Enabled,
+							Wallcheck = ARTargets.Walls.Enabled,
+						})
+						if target then
+							local item, hotbar, proj = getBow()
+							if item and hotbar then
+								local old = store.hand.tool and getHotbar(store.hand.tool) or 0
+								if hotbarSwitch(hotbar) then
+									task.wait(ARDelay.Value)
+									-- Fire — Projectile Aimbot's launch hook redirects the aim
+									if inputService.MouseEnabled then
+										mouse1click()
+									else
+										bedwars.SwordController:mobileSwingPressed()
+									end
+									arFireRate[item.itemType] = tick() + (proj.fireDelaySec or 0.5) + ARRate:GetRandomValue()
+									task.wait(ARDelay.Value)
+									if ARSwitch.Enabled and old ~= 0 and old ~= hotbar then
+										hotbarSwitch(old)
+									end
+								end
+							end
+						end
+					end
+					task.wait(0.05)
+				until not AutoRanking.Enabled
+			end
+		end,
+		Tooltip = 'Switches to bow/crossbow/headhunter and fires at enemies — pairs with Projectile Aimbot for accurate shots'
+	})
+	ARTargets = AutoRanking:CreateTargets({Players = true, Walls = true})
+	ARRange = AutoRanking:CreateSlider({
+		Name = 'Range',
+		Min = 1,
+		Max = 200,
+		Default = 100,
+		Suffix = function(v) return v == 1 and 'stud' or 'studs' end
+	})
+	ARRate = AutoRanking:CreateTwoSlider({
+		Name = 'Fire Rate',
+		Min = 0,
+		Max = 1,
+		DefaultMin = 0,
+		DefaultMax = 0.1,
+		Decimal = 100
+	})
+	ARDelay = AutoRanking:CreateSlider({
+		Name = 'Switch Delay',
+		Min = 0,
+		Max = 0.5,
+		Default = 0.05,
+		Decimal = 100,
+		Suffix = 'seconds'
+	})
+	ARSwitch = AutoRanking:CreateToggle({
+		Name = 'Switch back',
+		Default = true,
+		Tooltip = 'Switch back to your previous item after each shot'
+	})
+	ARWeapons = AutoRanking:CreateTextList({
+		Name = 'Weapons',
+		Default = {'bow', 'crossbow', 'headhunter'},
+		Placeholder = 'item type'
+	})
+end)
+
+run(function()
     local AutoToxic
     local GG
     local Toggles, Lists, said, dead = {}, {}, {}
