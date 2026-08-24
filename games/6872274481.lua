@@ -25955,11 +25955,11 @@ run(function()
 		task.spawn(function()
 			if not item or not item.Parent then return end
 
-			-- Wait until the server says the item is ready to be picked up
-			local ready = item:GetAttribute('PickupReadyTime') or 0
-			local now = workspace:GetServerTimeNow()
-			if ready > now then
-				task.wait(ready - now + 0.05)
+			-- Wait for ClientDropTime cooldown (same logic as PickupRange)
+			local cdt = item:GetAttribute('ClientDropTime') or 0
+			local age = tick() - cdt
+			if age < 2 then
+				task.wait(2 - age + 0.05)
 			end
 
 			if not item.Parent or not AutoHealthDrop.Enabled then return end
@@ -25971,8 +25971,15 @@ run(function()
 			local maxHealth = char:GetAttribute('MaxHealth') or 100
 			if Threshold and (health / maxHealth) * 100 >= Threshold.Value then return end
 
-			-- Call the pickup remote directly — same method PickupRange uses,
-			-- works at any distance without moving the player
+			-- Teleport item to player if we're the network owner (server validates proximity)
+			if isnetworkowner(item) then
+				local root = char:FindFirstChild('RootPart') or char:FindFirstChild('HumanoidRootPart')
+				if root then
+					item.CFrame = CFrame.new(root.Position - Vector3.new(0, 2, 0))
+				end
+			end
+
+			-- Call the pickup remote (same method PickupRange uses)
 			pcall(function()
 				bedwars.Client:Get(remotes.PickupItem):CallServerAsync({ itemDrop = item }):andThen(function(suc)
 					if suc and bedwars.SoundList then
