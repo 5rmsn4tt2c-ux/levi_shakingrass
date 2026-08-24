@@ -25971,20 +25971,15 @@ run(function()
 			local maxHealth = char:GetAttribute('MaxHealth') or 100
 			if Threshold and (health / maxHealth) * 100 >= Threshold.Value then return end
 
-			-- Move next to the drop so the game's proximity pickup fires,
-			-- then call checkForPickup to guarantee the server registers it.
-			local root = char:FindFirstChild('HumanoidRootPart')
-			local part = item:IsA('BasePart') and item or item:FindFirstChildOfClass('BasePart')
-			if root and part then
-				local old = root.CFrame
-				root.CFrame = CFrame.new(part.Position + Vector3.new(0, 3, 0))
-				pcall(bedwars.PickupItem)
-				task.wait(0.1)
-				-- Restore position so it's not too jarring
-				if root and root.Parent then root.CFrame = old end
-			else
-				pcall(bedwars.PickupItem)
-			end
+			-- Call the pickup remote directly — same method PickupRange uses,
+			-- works at any distance without moving the player
+			pcall(function()
+				bedwars.Client:Get(remotes.PickupItem):CallServerAsync({ itemDrop = item }):andThen(function(suc)
+					if suc and bedwars.SoundList then
+						bedwars.SoundManager:playSound(bedwars.SoundList.PICKUP_ITEM_DROP)
+					end
+				end)
+			end)
 		end)
 	end
 
