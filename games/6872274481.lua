@@ -25860,68 +25860,84 @@ run(function()
 	end
 
 	local function scanAndLog()
-		local found = {}
 		local lpos = entitylib.isAlive and entitylib.character.RootPart.Position or Vector3.zero
+		local output = '=== HealthDrop Debug — ' .. os.date('%H:%M:%S') .. ' ===\n\n'
 
-		-- Scan full workspace tree for anything health/drop related
-		local function scanDescendants(root)
-			for _, obj in root:GetDescendants() do
-				local name = obj.Name:lower()
-				if name:find('health') or name:find('drop') or name:find('pickup') or name:find('heal') then
-					table.insert(found, obj)
-				end
-				-- Also check ProximityPrompts whose text mentions health
-				pcall(function()
-					if obj:IsA('ProximityPrompt') then
-						local txt = (obj.ActionText .. obj.ObjectText):lower()
-						if txt:find('health') or txt:find('heal') then
-							table.insert(found, obj.Parent or obj)
-						end
-					end
-				end)
-				-- Check BillboardGui labels
-				pcall(function()
-					if obj:IsA('BillboardGui') or obj:IsA('TextLabel') then
-						local txt = tostring(obj.Name .. (obj:IsA('TextLabel') and obj.Text or '')):lower()
-						if txt:find('health') or txt:find('drop') then
-							table.insert(found, obj.Parent or obj)
-						end
-					end
-				end)
+		-- Dump every direct child of ItemDrops and ItemDropsCache fully
+		local function dumpFolder(folder)
+			if not folder then return end
+			local children = folder:GetChildren()
+			output = output .. '=== ' .. folder.Name .. ' (' .. #children .. ' children) ===\n'
+			if #children == 0 then
+				output = output .. '  (empty)\n\n'
+				return
 			end
-		end
-
-		scanDescendants(workspace)
-
-		if #found == 0 then
-			notif('HealthDrop Debug', 'Nothing found in workspace — stand near the Health Drop and try again', 6, 'warning')
-			return
-		end
-
-		-- Sort by distance to player
-		table.sort(found, function(a, b)
-			local da, db = math.huge, math.huge
-			pcall(function() da = (a:IsA('BasePart') and a.Position or a:FindFirstChildOfClass('BasePart') and a:FindFirstChildOfClass('BasePart').Position or lpos - lpos).Magnitude end)
-			pcall(function() db = (b:IsA('BasePart') and b.Position or b:FindFirstChildOfClass('BasePart') and b:FindFirstChildOfClass('BasePart').Position or lpos - lpos).Magnitude end)
-			return da < db
-		end)
-
-		local output = '=== HealthDrop Debug — ' .. os.date('%H:%M:%S') .. ' ===\n'
-		output = output .. 'Found ' .. #found .. ' object(s):\n\n'
-
-		-- Deduplicate by instance
-		local seen = {}
-		for _, obj in found do
-			if not seen[obj] then
-				seen[obj] = true
+			for _, obj in children do
 				local dist = '?'
 				pcall(function()
-					local p = obj:IsA('BasePart') and obj.Position or (obj:FindFirstChildOfClass('BasePart') or {Position = lpos}).Position
+					local p = obj:IsA('BasePart') and obj.Position
+						or (obj:FindFirstChildOfClass('BasePart') or {Position = lpos}).Position
 					dist = string.format('%.1f', (p - lpos).Magnitude)
 				end)
-				output = output .. '--- ' .. obj.Name .. ' (' .. obj.ClassName .. ') dist=' .. dist .. 'studs ---\n'
-				output = output .. dumpObject(obj) .. '\n\n'
+				output = output .. '  [' .. dist .. 'studs] ' .. obj.Name .. ' (' .. obj.ClassName .. ')\n'
+				-- Attributes
+				pcall(function()
+					for k, v in obj:GetAttributes() do
+						output = output .. '    ATTR ' .. k .. ' = ' .. tostring(v) .. '\n'
+					end
+				end)
+				-- Tags
+				pcall(function()
+					local tags = collectionService:GetTags(obj)
+					if #tags > 0 then
+						output = output .. '    TAGS: ' .. table.concat(tags, ', ') .. '\n'
+					end
+				end)
+				-- Children summary
+				for _, c in obj:GetDescendants() do
+					local cname = c.Name .. '(' .. c.ClassName .. ')'
+					-- log ProximityPrompts and interesting children fully
+					if c:IsA('ProximityPrompt') then
+						output = output .. '    PROXPROMPT: ActionText="' .. c.ActionText .. '" ObjectText="' .. c.ObjectText .. '" MaxActivationDistance=' .. tostring(c.MaxActivationDistance) .. '\n'
+					elseif c:IsA('StringValue') or c:IsA('NumberValue') or c:IsA('IntValue') or c:IsA('BoolValue') then
+						output = output .. '    VALUE ' .. c.Name .. '(' .. c.ClassName .. ') = ' .. tostring(c.Value) .. '\n'
+					elseif c:IsA('TextLabel') then
+						output = output .. '    TEXTLABEL "' .. c.Text .. '"\n'
+					else
+						output = output .. '    CHILD ' .. cname .. '\n'
+					end
+					-- Attributes on children too
+					pcall(function()
+						for k, v in c:GetAttributes() do
+							output = output .. '      ATTR ' .. k .. ' = ' .. tostring(v) .. '\n'
+						end
+					end)
+				end
+				output = output .. '\n'
 			end
+		end
+
+		dumpFolder(workspace:FindFirstChild('ItemDrops'))
+		dumpFolder(workspace:FindFirstChild('ItemDropsCache'))
+
+		-- Also grab any ItemDrop that has a Part within 30 studs of the player
+		output = output .. '=== Nearby drops (within 30 studs) ===\n'
+		local anyNearby = false
+		for _, folder in {workspace:FindFirstChild('ItemDrops'), workspace:FindFirstChild('ItemDropsCache')} do
+			if not folder then continue end
+			for _, obj in folder:GetChildren() do
+				pcall(function()
+					local p = obj:IsA('BasePart') and obj.Position
+						or (obj:FindFirstChildOfClass('BasePart') or {Position = Vector3.new(math.huge,0,0)}).Position
+					if (p - lpos).Magnitude <= 30 then
+						anyNearby = true
+						output = output .. '  ' .. obj.Name .. ' @ ' .. tostring(p) .. '\n'
+					end
+				end)
+			end
+		end
+		if not anyNearby then
+			output = output .. '  (none — stand closer to the Health Drop and scan again)\n'
 		end
 
 		pcall(function() writefile(debugFile, output) end)
@@ -25929,7 +25945,9 @@ run(function()
 			if setclipboard then setclipboard(output) end
 		end)
 
-		notif('HealthDrop Debug', 'Found ' .. #found .. ' objects — saved to healthdrop_debug.txt' .. (setclipboard and ' + clipboard' or ''), 8, 'info')
+		local total = (#(workspace:FindFirstChild('ItemDrops') and workspace:FindFirstChild('ItemDrops'):GetChildren() or {}))
+			+ (#(workspace:FindFirstChild('ItemDropsCache') and workspace:FindFirstChild('ItemDropsCache'):GetChildren() or {}))
+		notif('HealthDrop Debug', total .. ' items in drop folders — saved to healthdrop_debug.txt' .. (setclipboard and ' + clipboard' or ''), 8, 'info')
 	end
 
 	HealthDropDebug = vape.Categories.Utility:CreateModule({
