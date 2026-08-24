@@ -25798,3 +25798,148 @@ run(function()
         Tooltip = 'FastFlag FFlagDebugSkyGray = true (gray sky). May need a rejoin to fully apply.'
     })
 end)
+
+-- HealthDrop debug: scan workspace for the Health Drop object and log everything about it
+run(function()
+	local HealthDropDebug
+
+	local debugFile = 'levi_shakingrass/healthdrop_debug.txt'
+
+	local function dumpObject(obj, indent)
+		indent = indent or ''
+		local lines = {}
+
+		-- Basic info
+		table.insert(lines, indent .. 'NAME: ' .. tostring(obj.Name))
+		table.insert(lines, indent .. 'CLASS: ' .. obj.ClassName)
+		pcall(function()
+			table.insert(lines, indent .. 'PARENT: ' .. tostring(obj.Parent and obj.Parent.Name) .. ' (' .. tostring(obj.Parent and obj.Parent.ClassName) .. ')')
+		end)
+		pcall(function()
+			if obj:IsA('BasePart') then
+				table.insert(lines, indent .. 'POSITION: ' .. tostring(obj.Position))
+				table.insert(lines, indent .. 'SIZE: ' .. tostring(obj.Size))
+			end
+		end)
+
+		-- Attributes
+		pcall(function()
+			local attrs = obj:GetAttributes()
+			for k, v in attrs do
+				table.insert(lines, indent .. 'ATTR[' .. tostring(k) .. '] = ' .. tostring(v))
+			end
+		end)
+
+		-- Collection tags
+		pcall(function()
+			local tags = collectionService:GetTags(obj)
+			if #tags > 0 then
+				table.insert(lines, indent .. 'TAGS: ' .. table.concat(tags, ', '))
+			end
+		end)
+
+		-- ProximityPrompt info
+		pcall(function()
+			local pp = obj:FindFirstChildOfClass('ProximityPrompt')
+			if pp then
+				table.insert(lines, indent .. 'PROXPROMPT: ActionText="' .. tostring(pp.ActionText) .. '" ObjectText="' .. tostring(pp.ObjectText) .. '"')
+			end
+		end)
+
+		-- Children names (1 level deep)
+		local children = obj:GetChildren()
+		if #children > 0 then
+			local childNames = {}
+			for _, c in children do
+				table.insert(childNames, c.Name .. '(' .. c.ClassName .. ')')
+			end
+			table.insert(lines, indent .. 'CHILDREN[' .. #children .. ']: ' .. table.concat(childNames, ', '))
+		end
+
+		return table.concat(lines, '\n')
+	end
+
+	local function scanAndLog()
+		local found = {}
+		local lpos = entitylib.isAlive and entitylib.character.RootPart.Position or Vector3.zero
+
+		-- Scan full workspace tree for anything health/drop related
+		local function scanDescendants(root)
+			for _, obj in root:GetDescendants() do
+				local name = obj.Name:lower()
+				if name:find('health') or name:find('drop') or name:find('pickup') or name:find('heal') then
+					table.insert(found, obj)
+				end
+				-- Also check ProximityPrompts whose text mentions health
+				pcall(function()
+					if obj:IsA('ProximityPrompt') then
+						local txt = (obj.ActionText .. obj.ObjectText):lower()
+						if txt:find('health') or txt:find('heal') then
+							table.insert(found, obj.Parent or obj)
+						end
+					end
+				end)
+				-- Check BillboardGui labels
+				pcall(function()
+					if obj:IsA('BillboardGui') or obj:IsA('TextLabel') then
+						local txt = tostring(obj.Name .. (obj:IsA('TextLabel') and obj.Text or '')):lower()
+						if txt:find('health') or txt:find('drop') then
+							table.insert(found, obj.Parent or obj)
+						end
+					end
+				end)
+			end
+		end
+
+		scanDescendants(workspace)
+
+		if #found == 0 then
+			notif('HealthDrop Debug', 'Nothing found in workspace — stand near the Health Drop and try again', 6, 'warning')
+			return
+		end
+
+		-- Sort by distance to player
+		table.sort(found, function(a, b)
+			local da, db = math.huge, math.huge
+			pcall(function() da = (a:IsA('BasePart') and a.Position or a:FindFirstChildOfClass('BasePart') and a:FindFirstChildOfClass('BasePart').Position or lpos - lpos).Magnitude end)
+			pcall(function() db = (b:IsA('BasePart') and b.Position or b:FindFirstChildOfClass('BasePart') and b:FindFirstChildOfClass('BasePart').Position or lpos - lpos).Magnitude end)
+			return da < db
+		end)
+
+		local output = '=== HealthDrop Debug — ' .. os.date('%H:%M:%S') .. ' ===\n'
+		output = output .. 'Found ' .. #found .. ' object(s):\n\n'
+
+		-- Deduplicate by instance
+		local seen = {}
+		for _, obj in found do
+			if not seen[obj] then
+				seen[obj] = true
+				local dist = '?'
+				pcall(function()
+					local p = obj:IsA('BasePart') and obj.Position or (obj:FindFirstChildOfClass('BasePart') or {Position = lpos}).Position
+					dist = string.format('%.1f', (p - lpos).Magnitude)
+				end)
+				output = output .. '--- ' .. obj.Name .. ' (' .. obj.ClassName .. ') dist=' .. dist .. 'studs ---\n'
+				output = output .. dumpObject(obj) .. '\n\n'
+			end
+		end
+
+		pcall(function() writefile(debugFile, output) end)
+		pcall(function()
+			if setclipboard then setclipboard(output) end
+		end)
+
+		notif('HealthDrop Debug', 'Found ' .. #found .. ' objects — saved to healthdrop_debug.txt' .. (setclipboard and ' + clipboard' or ''), 8, 'info')
+	end
+
+	HealthDropDebug = vape.Categories.Utility:CreateModule({
+		Name = 'HealthDrop Debug',
+		Function = function(callback)
+			if callback then
+				scanAndLog()
+				HealthDropDebug:Toggle()
+			end
+		end,
+		Tooltip = 'Scans workspace for Health Drop objects and logs name/class/attributes/children to healthdrop_debug.txt'
+	})
+end)
