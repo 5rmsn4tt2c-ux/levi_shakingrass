@@ -9962,12 +9962,49 @@ run(function()
 								local old = store.hand.tool and getHotbar(store.hand.tool) or 0
 								if hotbarSwitch(hotbar) then
 									task.wait(ARDelay.Value)
-									-- Fire — Projectile Aimbot's launch hook redirects the aim
-									if inputService.MouseEnabled then
-										mouse1click()
-									else
-										bedwars.SwordController:mobileSwingPressed()
+
+									-- Find ammo type for this weapon
+									local ammo
+									for _, inv in store.inventory.inventory.items do
+										if proj.ammoItemTypes and table.find(proj.ammoItemTypes, inv.itemType) then
+											ammo = inv.itemType
+											break
+										end
 									end
+
+									if ammo then
+										local projectileType = canDebug and proj.projectileType(ammo) or 'arrow'
+										local projmeta = bedwars.ProjectileMeta[ammo]
+										local projSpeed = projmeta and projmeta.launchVelocity or 100
+										local gravity = (bedwars.ItemMeta[item.itemType] and bedwars.ItemMeta[item.itemType].gravitationalAcceleration) or 196.2
+										local selfpos = entitylib.character.RootPart.Position
+
+										-- Trajectory prediction toward the locked target
+										local calc = prediction.SolveTrajectory(
+											selfpos, projSpeed, gravity,
+											target.RootPart.Position, target.RootPart.Velocity,
+											workspace.Gravity, target.HipHeight,
+											target.Jumping and 42.6 or nil, nil, nil, lplr:GetNetworkPing()
+										) or target.RootPart.Position
+
+										local dir = CFrame.lookAt(selfpos, calc).LookVector
+										local shootPosition = (CFrame.new(selfpos, calc) * CFrame.new(Vector3.new(
+											-bedwars.BowConstantsTable.RelX,
+											-bedwars.BowConstantsTable.RelY,
+											-bedwars.BowConstantsTable.RelZ
+										))).Position
+										local id = httpService:GenerateGUID(true)
+
+										pcall(function()
+											bedwars.Client:Get(remotes.FireProjectile):CallServerAsync(
+												item.tool, ammo, projectileType,
+												shootPosition, selfpos, dir * projSpeed, id,
+												{ drawDurationSeconds = 1, shotId = httpService:GenerateGUID(false) },
+												workspace:GetServerTimeNow() - 0.045
+											)
+										end)
+									end
+
 									arFireRate[item.itemType] = tick() + (proj.fireDelaySec or 0.5) + ARRate:GetRandomValue()
 									task.wait(ARDelay.Value)
 									if ARSwitch.Enabled and old ~= 0 and old ~= hotbar then
