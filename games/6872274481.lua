@@ -25971,18 +25971,31 @@ run(function()
 			local maxHealth = char:GetAttribute('MaxHealth') or 100
 			if Threshold and (health / maxHealth) * 100 >= Threshold.Value then return end
 
-			-- Health drops use a ProximityPrompt — fireproximityprompt fires it
-			-- from any distance without needing network ownership
-			local prompt = item:FindFirstChildOfClass('ProximityPrompt')
-				or item:FindFirstChild('hitbox') and item.hitbox:FindFirstChildOfClass('ProximityPrompt')
-			if prompt then
-				pcall(fireproximityprompt, prompt)
-			else
-				-- Fallback: server remote (works if close enough)
+			local root = char:FindFirstChild('HumanoidRootPart')
+			if not root then return end
+
+			-- The server validates the character's position on pickup.
+			-- We own our own character, so briefly teleport to the item,
+			-- wait one heartbeat for the position to replicate, fire the
+			-- remote, then snap back — effectively invisible.
+			local savedCFrame = root.CFrame
+			root.CFrame = item.CFrame * CFrame.new(0, 3, 0)
+			root.AssemblyLinearVelocity = Vector3.zero
+			task.wait()  -- one physics frame for server to register new position
+
+			if item.Parent and AutoHealthDrop.Enabled then
 				pcall(function()
-					bedwars.Client:Get(remotes.PickupItem):CallServerAsync({ itemDrop = item })
+					bedwars.Client:Get(remotes.PickupItem):CallServerAsync({ itemDrop = item }):andThen(function(suc)
+						if suc and bedwars.SoundList then
+							bedwars.SoundManager:playSound(bedwars.SoundList.PICKUP_ITEM_DROP)
+						end
+					end)
 				end)
 			end
+
+			-- Snap back regardless of whether pickup succeeded
+			root.CFrame = savedCFrame
+			root.AssemblyLinearVelocity = Vector3.zero
 		end)
 	end
 
