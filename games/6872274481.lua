@@ -25955,11 +25955,11 @@ run(function()
 		task.spawn(function()
 			if not item or not item.Parent then return end
 
-			-- Wait for ClientDropTime cooldown (same logic as PickupRange)
-			local cdt = item:GetAttribute('ClientDropTime') or 0
-			local age = tick() - cdt
-			if age < 2 then
-				task.wait(2 - age + 0.05)
+			-- Wait for PickupReadyTime (server-side cooldown on the drop)
+			local ready = item:GetAttribute('PickupReadyTime') or 0
+			local now = workspace:GetServerTimeNow()
+			if ready > now then
+				task.wait(ready - now + 0.05)
 			end
 
 			if not item.Parent or not AutoHealthDrop.Enabled then return end
@@ -25971,22 +25971,18 @@ run(function()
 			local maxHealth = char:GetAttribute('MaxHealth') or 100
 			if Threshold and (health / maxHealth) * 100 >= Threshold.Value then return end
 
-			-- Teleport item to player if we're the network owner (server validates proximity)
-			if isnetworkowner(item) then
-				local root = char:FindFirstChild('RootPart') or char:FindFirstChild('HumanoidRootPart')
-				if root then
-					item.CFrame = CFrame.new(root.Position - Vector3.new(0, 2, 0))
-				end
-			end
-
-			-- Call the pickup remote (same method PickupRange uses)
-			pcall(function()
-				bedwars.Client:Get(remotes.PickupItem):CallServerAsync({ itemDrop = item }):andThen(function(suc)
-					if suc and bedwars.SoundList then
-						bedwars.SoundManager:playSound(bedwars.SoundList.PICKUP_ITEM_DROP)
-					end
+			-- Health drops use a ProximityPrompt — fireproximityprompt fires it
+			-- from any distance without needing network ownership
+			local prompt = item:FindFirstChildOfClass('ProximityPrompt')
+				or item:FindFirstChild('hitbox') and item.hitbox:FindFirstChildOfClass('ProximityPrompt')
+			if prompt then
+				pcall(fireproximityprompt, prompt)
+			else
+				-- Fallback: server remote (works if close enough)
+				pcall(function()
+					bedwars.Client:Get(remotes.PickupItem):CallServerAsync({ itemDrop = item })
 				end)
-			end)
+			end
 		end)
 	end
 
