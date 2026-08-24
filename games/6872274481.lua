@@ -9997,14 +9997,33 @@ run(function()
 											-bedwars.BowConstantsTable.RelZ
 										))).Position
 										local id = httpService:GenerateGUID(true)
+										local itemMeta = bedwars.ItemMeta[item.itemType]
 
+										-- Show local projectile animation
+										pcall(function()
+											bedwars.ProjectileController:createLocalProjectile(
+												itemMeta, ammo, projectileType,
+												shootPosition, id, dir * projSpeed, { drawDurationSeconds = 1 }
+											)
+										end)
+
+										-- Play launch sound
+										pcall(function()
+											local sounds = itemMeta.projectileSource.launchSound
+											local snd = sounds and sounds[math.random(1, #sounds)]
+											if snd then bedwars.SoundManager:playSound(snd) end
+										end)
+
+										-- Fire server remote
 										pcall(function()
 											bedwars.Client:Get(remotes.FireProjectile):CallServerAsync(
 												item.tool, ammo, projectileType,
 												shootPosition, selfpos, dir * projSpeed, id,
 												{ drawDurationSeconds = 1, shotId = httpService:GenerateGUID(false) },
 												workspace:GetServerTimeNow() - 0.045
-											)
+											):andThen(function(res)
+												if res then res.Parent = replicatedStorage end
+											end)
 										end)
 									end
 
