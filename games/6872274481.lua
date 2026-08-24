@@ -9923,14 +9923,12 @@ run(function()
 			end
 			if not matched then continue end
 
-			-- Check ammo (headhunter fires without ammo slot)
-			local hasAmmo = name:find('headhunter') and true or false
-			if not hasAmmo then
-				for _, inv in store.inventory.inventory.items do
-					if proj.ammoItemTypes and table.find(proj.ammoItemTypes, inv.itemType) then
-						hasAmmo = true
-						break
-					end
+			-- Check ammo
+			local hasAmmo = false
+			for _, inv in store.inventory.inventory.items do
+				if proj.ammoItemTypes and table.find(proj.ammoItemTypes, inv.itemType) then
+					hasAmmo = true
+					break
 				end
 			end
 			if not hasAmmo then continue end
