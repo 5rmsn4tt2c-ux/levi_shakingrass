@@ -25946,3 +25946,74 @@ run(function()
 		Tooltip = 'Scans workspace for Health Drop objects and logs name/class/attributes/children to healthdrop_debug.txt'
 	})
 end)
+
+run(function()
+	local AutoHealthDrop
+	local Threshold
+
+	local function tryPickup(item)
+		task.spawn(function()
+			if not item or not item.Parent then return end
+
+			-- Wait until the server says the item is ready to be picked up
+			local ready = item:GetAttribute('PickupReadyTime') or 0
+			local now = workspace:GetServerTimeNow()
+			if ready > now then
+				task.wait(ready - now + 0.05)
+			end
+
+			if not item.Parent or not AutoHealthDrop.Enabled then return end
+
+			-- Check health threshold
+			local char = entitylib.isAlive and entitylib.character
+			if not char then return end
+			local health = char:GetAttribute('Health') or 100
+			local maxHealth = char:GetAttribute('MaxHealth') or 100
+			if Threshold and (health / maxHealth) * 100 >= Threshold.Value then return end
+
+			-- Move next to the drop so the game's proximity pickup fires,
+			-- then call checkForPickup to guarantee the server registers it.
+			local root = char:FindFirstChild('HumanoidRootPart')
+			local part = item:IsA('BasePart') and item or item:FindFirstChildOfClass('BasePart')
+			if root and part then
+				local old = root.CFrame
+				root.CFrame = CFrame.new(part.Position + Vector3.new(0, 3, 0))
+				pcall(bedwars.PickupItem)
+				task.wait(0.1)
+				-- Restore position so it's not too jarring
+				if root and root.Parent then root.CFrame = old end
+			else
+				pcall(bedwars.PickupItem)
+			end
+		end)
+	end
+
+	AutoHealthDrop = vape.Categories.Utility:CreateModule({
+		Name = 'Auto Health Drop',
+		Function = function(callback)
+			if callback then
+				-- Handle drops that are already in the folder when toggled on
+				for _, item in workspace.ItemDrops:GetChildren() do
+					if item.Name == 'health_drop' then
+						tryPickup(item)
+					end
+				end
+				-- Watch for new drops appearing
+				AutoHealthDrop:Clean(workspace.ItemDrops.ChildAdded:Connect(function(item)
+					if item.Name == 'health_drop' then
+						tryPickup(item)
+					end
+				end))
+			end
+		end,
+		Tooltip = 'Automatically picks up Health Drops when your HP is below the threshold'
+	})
+	Threshold = AutoHealthDrop:CreateSlider({
+		Name = 'Pickup below',
+		Min = 1,
+		Max = 100,
+		Default = 100,
+		Suffix = '% HP',
+		Tooltip = '100 = always pick up | 50 = only when below half HP'
+	})
+end)
