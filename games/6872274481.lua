@@ -9949,12 +9949,15 @@ run(function()
 			if callback then
 				repeat
 					if entitylib.isAlive then
+						-- Wall check mirrors Projectile Aimbot's Walls setting
+						local paOpts = vape.Modules['Projectile Aimbot'] and vape.Modules['Projectile Aimbot'].Options
+						local wallcheck = paOpts and paOpts['Walls'] and paOpts['Walls'].Enabled
 						local target = entitylib.EntityPosition({
 							Part = 'RootPart',
 							Range = ARRange.Value,
 							Players = ARTargets.Players.Enabled,
 							NPCs = ARTargets.NPCs.Enabled,
-							Wallcheck = ARTargets.Walls.Enabled,
+							Wallcheck = wallcheck,
 						})
 						if target then
 							local item, hotbar, proj = getBow()
@@ -10020,7 +10023,7 @@ run(function()
 		end,
 		Tooltip = 'Switches to bow/crossbow/headhunter and fires at enemies — pairs with Projectile Aimbot for accurate shots'
 	})
-	ARTargets = AutoRanking:CreateTargets({Players = true, Walls = true})
+	ARTargets = AutoRanking:CreateTargets({Players = true})  -- Walls follows Projectile Aimbot's setting
 	ARRange = AutoRanking:CreateSlider({
 		Name = 'Range',
 		Min = 1,
