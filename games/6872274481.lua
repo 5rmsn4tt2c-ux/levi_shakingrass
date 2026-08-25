@@ -9999,12 +9999,18 @@ run(function()
 										))).Position
 										local id = httpService:GenerateGUID(true)
 
-										-- enableBeam: enters the crouched draw/aim pose the user sees when firing normally
-										pcall(function() bedwars.ProjectileController:enableBeam(item.tool) end)
-										-- disableBeam after a short hold to release the pose
+										-- DEBUG: check enableBeam/disableBeam
+										local pc = bedwars.ProjectileController
+										warn('[AR DEBUG] ProjectileController:', pc)
+										warn('[AR DEBUG] enableBeam:', pc and pc.enableBeam)
+										warn('[AR DEBUG] disableBeam:', pc and pc.disableBeam)
+										warn('[AR DEBUG] item.tool:', item.tool)
+										local ok1, err1 = pcall(function() pc:enableBeam(item.tool) end)
+										warn('[AR DEBUG] enableBeam result:', ok1, err1)
 										task.spawn(function()
 											task.wait(0.3)
-											pcall(function() bedwars.ProjectileController:disableBeam(item.tool) end)
+											local ok2, err2 = pcall(function() pc:disableBeam(item.tool) end)
+											warn('[AR DEBUG] disableBeam result:', ok2, err2)
 										end)
 
 										-- Play launch sound
