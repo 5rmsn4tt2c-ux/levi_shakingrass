@@ -9999,14 +9999,18 @@ run(function()
 										))).Position
 										local id = httpService:GenerateGUID(true)
 
-										-- DEBUG: list all ProjectileController methods
+										-- DEBUG: list ProjectileController metatable methods
 										local pc = bedwars.ProjectileController
 										local methods = {}
-										for k, v in pairs(pc) do
-											table.insert(methods, tostring(k) .. '=' .. type(v))
+										local mt = getmetatable(pc)
+										local idx = mt and (mt.__index or mt)
+										if type(idx) == 'table' then
+											for k, v in pairs(idx) do
+												table.insert(methods, tostring(k) .. '=' .. type(v))
+											end
 										end
 										table.sort(methods)
-										local dbg = '[AR DEBUG] PC methods:\n' .. table.concat(methods, '\n')
+										local dbg = '[AR DEBUG] PC meta methods:\n' .. table.concat(methods, '\n')
 										warn(dbg)
 										pcall(setclipboard, dbg)
 										pcall(function() pc:enableBeam(item.tool) end)
