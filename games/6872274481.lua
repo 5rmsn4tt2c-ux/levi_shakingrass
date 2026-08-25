@@ -22118,12 +22118,8 @@ run(function()
                                             end
 
                                             task.spawn(function()
-                                                if Legit.Enabled then
-                                                    hotbarSwitch(oldhotbar)
-                                                    if oldtool then
-                                                        switchItem(oldtool)
-                                                    end
-                                                end
+                                                if oldtool then switchItem(oldtool) end
+                                                if Legit.Enabled then hotbarSwitch(oldhotbar) end
                                             end)
                                         end
                                     end
@@ -22180,12 +22176,8 @@ run(function()
                                             end
 
                                             task.spawn(function()
-                                                if Legit2.Enabled then
-                                                    hotbarSwitch(oldhotbar)
-                                                    if oldtool then
-                                                        switchItem(oldtool)
-                                                    end
-                                                end
+                                                if oldtool then switchItem(oldtool) end
+                                                if Legit2.Enabled then hotbarSwitch(oldhotbar) end
                                             end)
                                         end
                                     end
