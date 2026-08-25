@@ -7322,6 +7322,124 @@ run(function()
 end)
 
 run(function()
+    local BillboardESP
+    local BTargets
+    local BColor
+    local BBackground
+    local BHealth
+    local BDistance
+    local BScale
+    local BTeammates
+    local bReference = {}
+
+    local function bBuildText(ent, localPos)
+        local name = ent.Player and ent.Player.DisplayName or (ent.Character and ent.Character.Name or '?')
+        local text = name
+        if BHealth.Enabled then
+            local hp = math.round(ent.Health or 0)
+            local maxHp = ent.MaxHealth or 100
+            local hc = Color3.fromHSV(math.clamp(hp / maxHp, 0, 1) / 2.5, 0.89, 0.75)
+            text = text .. string.format(' <font color="rgb(%d,%d,%d)">%d</font>', math.floor(hc.R*255), math.floor(hc.G*255), math.floor(hc.B*255), hp)
+        end
+        if BDistance.Enabled and localPos and ent.RootPart then
+            local dist = math.floor((localPos - ent.RootPart.Position).Magnitude)
+            text = string.format('<font color="rgb(85,255,85)">[%d]</font> ', dist) .. text
+        end
+        return text
+    end
+
+    local function bAddTag(ent)
+        if not BTargets.Players.Enabled and ent.Player then return end
+        if not BTargets.NPCs.Enabled and ent.NPC then return end
+        if BTeammates.Enabled and not ent.Targetable and not ent.Friend then return end
+        if not ent.Character or not ent.Character.PrimaryPart then return end
+        if bReference[ent] then return end
+
+        local billboard = Instance.new('BillboardGui')
+        billboard.Name = 'VapeESP'
+        billboard.AlwaysOnTop = true
+        billboard.Size = UDim2.fromOffset(200, 30)
+        billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+        billboard.Adornee = ent.Character.HumanoidRootPart
+        billboard.Parent = ent.Character.HumanoidRootPart
+
+        local label = Instance.new('TextLabel')
+        label.Size = UDim2.fromScale(1, 1)
+        label.AnchorPoint = Vector2.new(0.5, 0.5)
+        label.Position = UDim2.fromScale(0.5, 0.5)
+        label.BackgroundColor3 = Color3.new()
+        label.BackgroundTransparency = BBackground.Value
+        label.BorderSizePixel = 0
+        label.TextSize = math.floor(14 * BScale.Value)
+        label.Font = Enum.Font.GothamBold
+        label.TextColor3 = entitylib.getEntityColor(ent) or Color3.fromHSV(BColor.Hue, BColor.Sat, BColor.Value)
+        label.RichText = true
+        label.Text = bBuildText(ent, nil)
+        label.Parent = billboard
+
+        bReference[ent] = {billboard = billboard, label = label}
+    end
+
+    local function bRemoveTag(ent)
+        local v = bReference[ent]
+        if v then
+            bReference[ent] = nil
+            pcall(function() v.billboard:Destroy() end)
+        end
+    end
+
+    BillboardESP = vape.Categories.Render:CreateModule({
+        Name = 'Billboard ESP',
+        Function = function(callback)
+            if callback then
+                for _, ent in entitylib.List do bAddTag(ent) end
+                BillboardESP:Clean(entitylib.Events.EntityAdded:Connect(bAddTag))
+                BillboardESP:Clean(entitylib.Events.EntityRemoved:Connect(bRemoveTag))
+                BillboardESP:Clean(runService.RenderStepped:Connect(function()
+                    local alive = entitylib.isAlive
+                    local localPos = alive and entitylib.character.RootPart.Position or nil
+                    for ent, data in bReference do
+                        if not ent.Character or not ent.Character.PrimaryPart then continue end
+                        local label = data.label
+                        label.Text = bBuildText(ent, localPos)
+                        label.TextColor3 = entitylib.getEntityColor(ent) or Color3.fromHSV(BColor.Hue, BColor.Sat, BColor.Value)
+                        label.TextSize = math.floor(14 * BScale.Value)
+                        label.BackgroundTransparency = BBackground.Value
+                    end
+                end))
+            else
+                for ent in bReference do bRemoveTag(ent) end
+            end
+        end,
+        Tooltip = 'BillboardGui ESP — works on Delta and all executors'
+    })
+    BTargets = BillboardESP:CreateTargets({Players = true})
+    BColor = BillboardESP:CreateColorSlider({Name = 'Color'})
+    BScale = BillboardESP:CreateSlider({
+        Name = 'Scale',
+        Default = 1,
+        Min = 0.5,
+        Max = 2,
+        Decimal = 10,
+    })
+    BBackground = BillboardESP:CreateSlider({
+        Name = 'Background',
+        Default = 0.5,
+        Min = 0,
+        Max = 1,
+        Decimal = 10,
+        Tooltip = '0 = solid black, 1 = fully transparent'
+    })
+    BHealth = BillboardESP:CreateToggle({Name = 'Health', Default = true})
+    BDistance = BillboardESP:CreateToggle({Name = 'Distance'})
+    BTeammates = BillboardESP:CreateToggle({
+        Name = 'Priority Only',
+        Default = true,
+        Tooltip = 'Only show enemies and priority targets'
+    })
+end)
+
+run(function()
     local BulletTracers
     local Material
     local Lifetime
