@@ -9999,23 +9999,17 @@ run(function()
 										))).Position
 										local id = httpService:GenerateGUID(true)
 
-										-- DEBUG: check enableBeam/disableBeam
+										-- DEBUG: list all ProjectileController methods
 										local pc = bedwars.ProjectileController
-										local ok1, err1 = pcall(function() pc:enableBeam(item.tool) end)
-										task.spawn(function()
-											task.wait(0.3)
-											local ok2, err2 = pcall(function() pc:disableBeam(item.tool) end)
-											local dbg = table.concat({
-												'[AR DEBUG] ProjectileController: ' .. tostring(pc),
-												'[AR DEBUG] enableBeam: ' .. tostring(pc and pc.enableBeam),
-												'[AR DEBUG] disableBeam: ' .. tostring(pc and pc.disableBeam),
-												'[AR DEBUG] item.tool: ' .. tostring(item.tool),
-												'[AR DEBUG] enableBeam result: ' .. tostring(ok1) .. ' ' .. tostring(err1),
-												'[AR DEBUG] disableBeam result: ' .. tostring(ok2) .. ' ' .. tostring(err2),
-											}, '\n')
-											warn(dbg)
-											pcall(setclipboard, dbg)
-										end)
+										local methods = {}
+										for k, v in pairs(pc) do
+											table.insert(methods, tostring(k) .. '=' .. type(v))
+										end
+										table.sort(methods)
+										local dbg = '[AR DEBUG] PC methods:\n' .. table.concat(methods, '\n')
+										warn(dbg)
+										pcall(setclipboard, dbg)
+										pcall(function() pc:enableBeam(item.tool) end)
 
 										-- Play launch sound
 										pcall(function()
