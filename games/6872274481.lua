@@ -10001,16 +10001,20 @@ run(function()
 
 										-- DEBUG: check enableBeam/disableBeam
 										local pc = bedwars.ProjectileController
-										warn('[AR DEBUG] ProjectileController:', pc)
-										warn('[AR DEBUG] enableBeam:', pc and pc.enableBeam)
-										warn('[AR DEBUG] disableBeam:', pc and pc.disableBeam)
-										warn('[AR DEBUG] item.tool:', item.tool)
 										local ok1, err1 = pcall(function() pc:enableBeam(item.tool) end)
-										warn('[AR DEBUG] enableBeam result:', ok1, err1)
 										task.spawn(function()
 											task.wait(0.3)
 											local ok2, err2 = pcall(function() pc:disableBeam(item.tool) end)
-											warn('[AR DEBUG] disableBeam result:', ok2, err2)
+											local dbg = table.concat({
+												'[AR DEBUG] ProjectileController: ' .. tostring(pc),
+												'[AR DEBUG] enableBeam: ' .. tostring(pc and pc.enableBeam),
+												'[AR DEBUG] disableBeam: ' .. tostring(pc and pc.disableBeam),
+												'[AR DEBUG] item.tool: ' .. tostring(item.tool),
+												'[AR DEBUG] enableBeam result: ' .. tostring(ok1) .. ' ' .. tostring(err1),
+												'[AR DEBUG] disableBeam result: ' .. tostring(ok2) .. ' ' .. tostring(err2),
+											}, '\n')
+											warn(dbg)
+											pcall(setclipboard, dbg)
 										end)
 
 										-- Play launch sound
