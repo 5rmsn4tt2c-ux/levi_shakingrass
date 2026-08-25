@@ -9899,198 +9899,140 @@ run(function()
 end)
 
 run(function()
-	local AutoRanking
-	local ARTargets
-	local ARRange
-	local ARRate
-	local ARDelay
-	local ARSwitch
-	local ARWeapons
+	local AutoRank2
+	local AR2Targets
+	local AR2Range
+	local AR2FireRate
+	local AR2Legit
+	local AR2Whitelist
+	local ar2FireRates = {}
 
-	local arFireRate = {}
+	local ar2Remote = {InvokeServer = function(self, ...) end}
+	task.spawn(function()
+		ar2Remote = bedwars.Client:Get(remotes.FireProjectile).instance
+	end)
 
-	local function getBow()
+	local function ar2GetAmmo(proj)
 		for _, item in store.inventory.inventory.items do
-			local meta = bedwars.ItemMeta[item.itemType]
-			local proj = meta and meta.projectileSource
-			if not proj then continue end
-
-			-- Check if item type matches the weapons list
-			local name = item.itemType
-			local matched = false
-			for _, w in ARWeapons.ListEnabled do
-				if name:find(w) then matched = true break end
-			end
-			if not matched then continue end
-
-			-- Check ammo
-			local hasAmmo = false
-			for _, inv in store.inventory.inventory.items do
-				if proj.ammoItemTypes and table.find(proj.ammoItemTypes, inv.itemType) then
-					hasAmmo = true
-					break
-				end
-			end
-			if not hasAmmo then continue end
-
-			-- Respect per-weapon fire rate
-			if (arFireRate[name] or 0) > tick() then continue end
-
-			local hotbar = getHotbar(item.tool)
-			if hotbar then
-				return item, hotbar, proj
+			if proj.ammoItemTypes and table.find(proj.ammoItemTypes, item.itemType) then
+				return item.itemType
 			end
 		end
 	end
 
-	AutoRanking = vape.Categories.Combat:CreateModule({
-		Name = 'Auto Ranking',
+	local function ar2GetProjectiles()
+		local items = {}
+		for _, item in store.inventory.inventory.items do
+			local meta = bedwars.ItemMeta[item.itemType]
+			local proj = meta and meta.projectileSource
+			local ammo = proj and ar2GetAmmo(proj)
+			if not ammo then continue end
+			if not (table.find(AR2Whitelist.ListEnabled, ammo) or table.find(AR2Whitelist.ListEnabled, item.itemType)) then continue end
+			table.insert(items, {item, ammo, proj.projectileType(ammo), proj, meta})
+		end
+		return items
+	end
+
+	AutoRank2 = vape.Categories.Combat:CreateModule({
+		Name = 'Auto Rank 2',
 		Function = function(callback)
 			if callback then
 				repeat
 					if entitylib.isAlive then
-						-- Wall check mirrors Projectile Aimbot's Walls setting
 						local paOpts = vape.Modules['Projectile Aimbot'] and vape.Modules['Projectile Aimbot'].Options
 						local wallcheck = paOpts and paOpts['Walls'] and paOpts['Walls'].Enabled
 						local target = entitylib.EntityPosition({
 							Part = 'RootPart',
-							Range = ARRange.Value,
-							Players = ARTargets.Players.Enabled,
-							NPCs = ARTargets.NPCs.Enabled,
+							Range = AR2Range.Value,
+							Players = AR2Targets.Players.Enabled,
+							NPCs = AR2Targets.NPCs.Enabled,
 							Wallcheck = wallcheck,
 						})
 						if target then
-							local item, hotbar, proj = getBow()
-							if item and hotbar then
-								local old = store.hand.tool and getHotbar(store.hand.tool) or 0
-								if hotbarSwitch(hotbar) then
-									task.wait(ARDelay.Value)
-
-									-- Find ammo type for this weapon
-									local ammo
-									for _, inv in store.inventory.inventory.items do
-										if proj.ammoItemTypes and table.find(proj.ammoItemTypes, inv.itemType) then
-											ammo = inv.itemType
-											break
-										end
+							local projectiles = ar2GetProjectiles()
+							for _, entry in ipairs(projectiles) do
+								local item, ammo, projectile, proj, itemMeta = table.unpack(entry)
+								if tick() <= (ar2FireRates[item.itemType] or 0) then continue end
+								local hotbar = getHotbar(item.tool)
+								if not hotbar then continue end
+								local oldhotbar, oldtool = store.inventory.hotbarSlot, store.hand.tool
+								switchItem(item.tool)
+								if AR2Legit.Enabled then hotbarSwitch(hotbar) end
+								local projmeta = bedwars.ProjectileMeta[ammo]
+								local projSpeed = projmeta and projmeta.launchVelocity or 100
+								local gravity = (projmeta and projmeta.gravitationalAcceleration)
+									or (itemMeta and itemMeta.gravitationalAcceleration) or 196.2
+								local selfpos = entitylib.character.RootPart.Position
+								local calc = prediction.SolveTrajectory(
+									selfpos, projSpeed, gravity,
+									target.RootPart.Position, target.RootPart.Velocity,
+									workspace.Gravity, target.HipHeight,
+									target.Jumping and 42.6 or nil, nil, nil, lplr:GetNetworkPing()
+								)
+								if calc then
+									local sdir = CFrame.lookAt(selfpos, calc).LookVector
+									local id = httpService:GenerateGUID(true)
+									local shootPosition = (CFrame.new(selfpos, calc) * CFrame.new(Vector3.new(
+										-bedwars.BowConstantsTable.RelX,
+										-bedwars.BowConstantsTable.RelY,
+										-bedwars.BowConstantsTable.RelZ
+									))).Position
+									bedwars.ProjectileController:createLocalProjectile(itemMeta, ammo, projectile, shootPosition, id, sdir * projSpeed, {drawDurationSeconds = 1})
+									local _, res = pcall(function()
+										return ar2Remote:InvokeServer(
+											item.tool, ammo, projectile,
+											shootPosition, selfpos, sdir * projSpeed, id,
+											{drawDurationSeconds = 1, shotId = httpService:GenerateGUID(false)},
+											workspace:GetServerTimeNow() - 0.045
+										)
+									end)
+									if res then
+										pcall(function() res.Parent = replicatedStorage end)
+										local shoot = itemMeta.projectileSource and itemMeta.projectileSource.launchSound
+										shoot = shoot and shoot[math.random(1, #shoot)]
+										if shoot then bedwars.SoundManager:playSound(shoot) end
 									end
-
-									if ammo then
-										local projectileType = canDebug and proj.projectileType(ammo) or 'arrow'
-										local projmeta = bedwars.ProjectileMeta[ammo]
-										local projSpeed = projmeta and projmeta.launchVelocity or 100
-										local itemMeta = bedwars.ItemMeta[item.itemType]
-										local gravity = (itemMeta and itemMeta.gravitationalAcceleration) or 196.2
-										local selfpos = entitylib.character.RootPart.Position
-
-										-- Trajectory prediction toward the locked target
-										local calc = prediction.SolveTrajectory(
-											selfpos, projSpeed, gravity,
-											target.RootPart.Position, target.RootPart.Velocity,
-											workspace.Gravity, target.HipHeight,
-											target.Jumping and 42.6 or nil, nil, nil, lplr:GetNetworkPing()
-										) or target.RootPart.Position
-
-										local dir = CFrame.lookAt(selfpos, calc).LookVector
-										local shootPosition = (CFrame.new(selfpos, calc) * CFrame.new(Vector3.new(
-											-bedwars.BowConstantsTable.RelX,
-											-bedwars.BowConstantsTable.RelY,
-											-bedwars.BowConstantsTable.RelZ
-										))).Position
-										local id = httpService:GenerateGUID(true)
-
-										-- DEBUG: list ProjectileController metatable methods
-										local pc = bedwars.ProjectileController
-										local methods = {}
-										local mt = getmetatable(pc)
-										local idx = mt and (mt.__index or mt)
-										if type(idx) == 'table' then
-											for k, v in pairs(idx) do
-												table.insert(methods, tostring(k) .. '=' .. type(v))
-											end
-										end
-										table.sort(methods)
-										local dbg = '[AR DEBUG] PC meta methods:\n' .. table.concat(methods, '\n')
-										warn(dbg)
-										pcall(setclipboard, dbg)
-										pcall(function() pc:enableBeam(item.tool) end)
-
-										-- Play launch sound
-										pcall(function()
-											local sounds = itemMeta.projectileSource.launchSound
-											local snd = sounds and sounds[math.random(1, #sounds)]
-											if snd then bedwars.SoundManager:playSound(snd) end
-										end)
-
-										-- Show local projectile visual
-										pcall(function()
-											bedwars.ProjectileController:createLocalProjectile(
-												itemMeta, ammo, projectileType,
-												shootPosition, id, dir * projSpeed, { drawDurationSeconds = 1 }
-											)
-										end)
-
-										-- Fire aimed shot via server remote
-										pcall(function()
-											bedwars.Client:Get(remotes.FireProjectile):CallServerAsync(
-												item.tool, ammo, projectileType,
-												shootPosition, selfpos, dir * projSpeed, id,
-												{ drawDurationSeconds = 1, shotId = httpService:GenerateGUID(false) },
-												workspace:GetServerTimeNow() - 0.045
-											):andThen(function(res)
-												if res then res.Parent = replicatedStorage end
-											end)
-										end)
-									end
-
-									arFireRate[item.itemType] = tick() + (proj.fireDelaySec or 0.5) + ARRate:GetRandomValue()
-									task.wait(ARDelay.Value)
-									if ARSwitch.Enabled and old ~= 0 and old ~= hotbar then
-										hotbarSwitch(old)
-									end
+									ar2FireRates[item.itemType] = tick() + (proj.fireDelaySec or 0.5) + AR2FireRate.Value
 								end
+								if oldtool then switchItem(oldtool) end
+								task.spawn(function()
+									if AR2Legit.Enabled then hotbarSwitch(oldhotbar) end
+								end)
+								break
 							end
 						end
 					end
 					task.wait(0.05)
-				until not AutoRanking.Enabled
+				until not AutoRank2.Enabled
 			end
 		end,
-		Tooltip = 'Switches to bow/crossbow/headhunter and fires at enemies — pairs with Projectile Aimbot for accurate shots'
+		Tooltip = 'Fast Hits style bow/crossbow/headhunter auto-fire at enemies'
 	})
-	ARTargets = AutoRanking:CreateTargets({Players = true})  -- Walls follows Projectile Aimbot's setting
-	ARRange = AutoRanking:CreateSlider({
+	AR2Targets = AutoRank2:CreateTargets({Players = true})
+	AR2Range = AutoRank2:CreateSlider({
 		Name = 'Range',
 		Min = 1,
 		Max = 200,
 		Default = 100,
 		Suffix = function(v) return v == 1 and 'stud' or 'studs' end
 	})
-	ARRate = AutoRanking:CreateTwoSlider({
+	AR2FireRate = AutoRank2:CreateSlider({
 		Name = 'Fire Rate',
 		Min = 0,
-		Max = 1,
-		DefaultMin = 0,
-		DefaultMax = 0.1,
-		Decimal = 100
-	})
-	ARDelay = AutoRanking:CreateSlider({
-		Name = 'Switch Delay',
-		Min = 0,
-		Max = 0.5,
+		Max = 2,
 		Default = 0.05,
 		Decimal = 100,
 		Suffix = 'seconds'
 	})
-	ARSwitch = AutoRanking:CreateToggle({
-		Name = 'Switch back',
-		Default = true,
-		Tooltip = 'Switch back to your previous item after each shot'
+	AR2Legit = AutoRank2:CreateToggle({
+		Name = 'Legit Switch',
+		Default = false,
+		Tooltip = 'Visibly switch hotbar slot when firing'
 	})
-	ARWeapons = AutoRanking:CreateTextList({
-		Name = 'Weapons',
+	AR2Whitelist = AutoRank2:CreateTextList({
+		Name = 'Projectiles',
 		Default = {'bow', 'crossbow', 'headhunter'},
-		Placeholder = 'item type'
+		Placeholder = 'ammo or item type'
 	})
 end)
 
