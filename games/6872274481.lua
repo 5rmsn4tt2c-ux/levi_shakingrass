@@ -9979,7 +9979,8 @@ run(function()
 										local projectileType = canDebug and proj.projectileType(ammo) or 'arrow'
 										local projmeta = bedwars.ProjectileMeta[ammo]
 										local projSpeed = projmeta and projmeta.launchVelocity or 100
-										local gravity = (bedwars.ItemMeta[item.itemType] and bedwars.ItemMeta[item.itemType].gravitationalAcceleration) or 196.2
+										local itemMeta = bedwars.ItemMeta[item.itemType]
+										local gravity = (itemMeta and itemMeta.gravitationalAcceleration) or 196.2
 										local selfpos = entitylib.character.RootPart.Position
 
 										-- Trajectory prediction toward the locked target
@@ -9997,15 +9998,24 @@ run(function()
 											-bedwars.BowConstantsTable.RelZ
 										))).Position
 										local id = httpService:GenerateGUID(true)
-										local itemMeta = bedwars.ItemMeta[item.itemType]
 
-										-- Show local projectile animation
-										pcall(function()
-											bedwars.ProjectileController:createLocalProjectile(
-												itemMeta, ammo, projectileType,
-												shootPosition, id, dir * projSpeed, { drawDurationSeconds = 1 }
-											)
-										end)
+										if inputService.MouseEnabled then
+											-- Desktop: hook at priority 1 (runs first) to suppress the
+											-- game's own shot so we don't double-fire, then mouse1press
+											-- to play the character draw/release animation.
+											local suppressHook
+											suppressHook = bedwars.ProjectileLaunchHook:Add('AutoRankingAnim', 1, function()
+												if suppressHook then suppressHook() suppressHook = nil end
+												-- return without calling nextLaunch → suppresses game shot
+											end)
+											task.spawn(function()
+												mouse1press()
+												task.wait(0.08)
+												mouse1release()
+												task.wait(0.25)
+												if suppressHook then suppressHook() suppressHook = nil end
+											end)
+										end
 
 										-- Play launch sound
 										pcall(function()
@@ -10014,7 +10024,15 @@ run(function()
 											if snd then bedwars.SoundManager:playSound(snd) end
 										end)
 
-										-- Fire server remote
+										-- Show local projectile visual
+										pcall(function()
+											bedwars.ProjectileController:createLocalProjectile(
+												itemMeta, ammo, projectileType,
+												shootPosition, id, dir * projSpeed, { drawDurationSeconds = 1 }
+											)
+										end)
+
+										-- Fire aimed shot via server remote
 										pcall(function()
 											bedwars.Client:Get(remotes.FireProjectile):CallServerAsync(
 												item.tool, ammo, projectileType,
