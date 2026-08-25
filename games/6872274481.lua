@@ -9999,23 +9999,20 @@ run(function()
 										))).Position
 										local id = httpService:GenerateGUID(true)
 
-										if inputService.MouseEnabled then
-											-- Desktop: hook at priority 1 (runs first) to suppress the
-											-- game's own shot so we don't double-fire, then mouse1press
-											-- to play the character draw/release animation.
-											local suppressHook
-											suppressHook = bedwars.ProjectileLaunchHook:Add('AutoRankingAnim', 1, function()
-												if suppressHook then suppressHook() suppressHook = nil end
-												-- return without calling nextLaunch → suppresses game shot
-											end)
-											task.spawn(function()
-												mouse1press()
-												task.wait(0.08)
-												mouse1release()
-												task.wait(0.25)
-												if suppressHook then suppressHook() suppressHook = nil end
-											end)
-										end
+										-- Suppress the game's own shot so we don't double-fire
+										local suppressHook
+										suppressHook = bedwars.ProjectileLaunchHook:Add('AutoRankingAnim', 1, function()
+											if suppressHook then suppressHook() suppressHook = nil end
+											-- return without calling nextLaunch → suppresses game shot
+										end)
+
+										-- Fire the tool's Activated signal to trigger the character
+										-- draw/aim animation on both desktop and mobile
+										task.spawn(function()
+											pcall(firesignal, item.tool.Activated)
+											task.wait(0.3)
+											if suppressHook then suppressHook() suppressHook = nil end
+										end)
 
 										-- Play launch sound
 										pcall(function()
