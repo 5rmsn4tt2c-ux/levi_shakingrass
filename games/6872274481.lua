@@ -9999,19 +9999,22 @@ run(function()
 										))).Position
 										local id = httpService:GenerateGUID(true)
 
-										-- Suppress the game's own shot so we don't double-fire
-										local suppressHook
-										suppressHook = bedwars.ProjectileLaunchHook:Add('AutoRankingAnim', 1, function()
-											if suppressHook then suppressHook() suppressHook = nil end
-											-- return without calling nextLaunch → suppresses game shot
-										end)
-
-										-- Fire the tool's Activated signal to trigger the character
-										-- draw/aim animation on both desktop and mobile
-										task.spawn(function()
-											pcall(firesignal, item.tool.Activated)
-											task.wait(0.3)
-											if suppressHook then suppressHook() suppressHook = nil end
+										-- Play the character firing animation (mirrors PA/LockOn bow-fire logic)
+										pcall(function()
+											local isCrossbow = item.itemType:find('crossbow')
+											local isBow = item.itemType:find('bow') and not isCrossbow
+											if isCrossbow then
+												bedwars.ViewmodelController:playAnimation(bedwars.AnimationType.FP_CROSSBOW_FIRE)
+												bedwars.GameAnimationUtil:playAnimation(lplr, bedwars.AnimationType.CROSSBOW_FIRE)
+											elseif isBow then
+												bedwars.ViewmodelController:playAnimation(bedwars.AnimationType.FP_CROSSBOW_FIRE)
+												bedwars.GameAnimationUtil:playAnimation(lplr, bedwars.AnimationType.BOW_FIRE)
+											else
+												local shootAnim = itemMeta.thirdPerson and itemMeta.thirdPerson.shootAnimation
+												if shootAnim then
+													bedwars.GameAnimationUtil:playAnimation(lplr, shootAnim)
+												end
+											end
 										end)
 
 										-- Play launch sound
