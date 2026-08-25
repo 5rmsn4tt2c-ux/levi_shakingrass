@@ -9999,22 +9999,12 @@ run(function()
 										))).Position
 										local id = httpService:GenerateGUID(true)
 
-										-- Play the character firing animation (mirrors PA/LockOn bow-fire logic)
-										pcall(function()
-											local isCrossbow = item.itemType:find('crossbow')
-											local isBow = item.itemType:find('bow') and not isCrossbow
-											if isCrossbow then
-												bedwars.ViewmodelController:playAnimation(bedwars.AnimationType.FP_CROSSBOW_FIRE)
-												bedwars.GameAnimationUtil:playAnimation(lplr, bedwars.AnimationType.CROSSBOW_FIRE)
-											elseif isBow then
-												bedwars.ViewmodelController:playAnimation(bedwars.AnimationType.FP_CROSSBOW_FIRE)
-												bedwars.GameAnimationUtil:playAnimation(lplr, bedwars.AnimationType.BOW_FIRE)
-											else
-												local shootAnim = itemMeta.thirdPerson and itemMeta.thirdPerson.shootAnimation
-												if shootAnim then
-													bedwars.GameAnimationUtil:playAnimation(lplr, shootAnim)
-												end
-											end
+										-- enableBeam: enters the crouched draw/aim pose the user sees when firing normally
+										pcall(function() bedwars.ProjectileController:enableBeam(item.tool) end)
+										-- disableBeam after a short hold to release the pose
+										task.spawn(function()
+											task.wait(0.3)
+											pcall(function() bedwars.ProjectileController:disableBeam(item.tool) end)
 										end)
 
 										-- Play launch sound
