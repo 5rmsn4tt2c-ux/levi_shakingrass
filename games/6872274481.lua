@@ -7322,6 +7322,138 @@ run(function()
 end)
 
 run(function()
+    local BoxESP
+    local BTargets
+    local BColor
+    local BThickness
+    local BTeammates
+    local bReference = {}
+    local bGui
+    local bCamera = workspace.CurrentCamera
+
+    -- Project 8 corners of character bounding box to viewport and return
+    -- screen-space (x, y, width, height). Returns nil if entirely off-screen.
+    local function bGetScreenBox(character)
+        local hrp = character:FindFirstChild('HumanoidRootPart')
+        local hum = character:FindFirstChildOfClass('Humanoid')
+        if not hrp or not hum then return nil end
+        local pos = hrp.Position
+        local hip = hum.HipHeight
+        local hw = 1.0  -- half-width (studs)
+        local yBot = pos.Y - hip - 0.1
+        local yTop = pos.Y + hip + 0.6  -- +0.6 reaches roughly the top of the head
+        local minX, minY = math.huge, math.huge
+        local maxX, maxY = -math.huge, -math.huge
+        local anyVisible = false
+        local corners = {
+            Vector3.new(pos.X - hw, yBot, pos.Z - hw),
+            Vector3.new(pos.X + hw, yBot, pos.Z - hw),
+            Vector3.new(pos.X - hw, yBot, pos.Z + hw),
+            Vector3.new(pos.X + hw, yBot, pos.Z + hw),
+            Vector3.new(pos.X - hw, yTop, pos.Z - hw),
+            Vector3.new(pos.X + hw, yTop, pos.Z - hw),
+            Vector3.new(pos.X - hw, yTop, pos.Z + hw),
+            Vector3.new(pos.X + hw, yTop, pos.Z + hw),
+        }
+        for _, c in corners do
+            local sp, vis = bCamera:WorldToViewportPoint(c)
+            if vis and sp.Z > 0 then
+                anyVisible = true
+                if sp.X < minX then minX = sp.X end
+                if sp.Y < minY then minY = sp.Y end
+                if sp.X > maxX then maxX = sp.X end
+                if sp.Y > maxY then maxY = sp.Y end
+            end
+        end
+        if not anyVisible then return nil end
+        return minX, minY, maxX - minX, maxY - minY
+    end
+
+    local function bAddBox(ent)
+        if not BTargets.Players.Enabled and ent.Player then return end
+        if not BTargets.NPCs.Enabled and ent.NPC then return end
+        if BTeammates.Enabled and not ent.Targetable and not ent.Friend then return end
+        if not ent.Character or not ent.Character.PrimaryPart then return end
+        if bReference[ent] then return end
+
+        local frame = Instance.new('Frame')
+        frame.BackgroundTransparency = 1
+        frame.BorderSizePixel = 0
+        frame.Visible = false
+        local stroke = Instance.new('UIStroke')
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Color = entitylib.getEntityColor(ent) or Color3.fromHSV(BColor.Hue, BColor.Sat, BColor.Value)
+        stroke.Thickness = BThickness.Value
+        stroke.Parent = frame
+        frame.Parent = bGui
+        bReference[ent] = {frame = frame, stroke = stroke}
+    end
+
+    local function bRemoveBox(ent)
+        local v = bReference[ent]
+        if v then
+            bReference[ent] = nil
+            pcall(function() v.frame:Destroy() end)
+        end
+    end
+
+    BoxESP = vape.Categories.Render:CreateModule({
+        Name = 'Box ESP',
+        Function = function(callback)
+            if callback then
+                bGui = Instance.new('ScreenGui')
+                bGui.Name = 'VapeBoxESP'
+                bGui.IgnoreGuiInset = true
+                bGui.DisplayOrder = 999
+                bGui.ResetOnSpawn = false
+                local ok = pcall(function() bGui.Parent = game:GetService('CoreGui') end)
+                if not ok or not bGui.Parent then bGui.Parent = lplr.PlayerGui end
+                for _, ent in entitylib.List do bAddBox(ent) end
+                BoxESP:Clean(entitylib.Events.EntityAdded:Connect(bAddBox))
+                BoxESP:Clean(entitylib.Events.EntityRemoved:Connect(bRemoveBox))
+                BoxESP:Clean(runService.RenderStepped:Connect(function()
+                    for ent, data in bReference do
+                        local ch = ent.Character
+                        if not ch or not ch.PrimaryPart then
+                            data.frame.Visible = false
+                            continue
+                        end
+                        local x, y, w, h = bGetScreenBox(ch)
+                        if not x then
+                            data.frame.Visible = false
+                            continue
+                        end
+                        data.frame.Visible = true
+                        data.frame.Position = UDim2.fromOffset(x, y)
+                        data.frame.Size = UDim2.fromOffset(w, h)
+                        data.stroke.Color = entitylib.getEntityColor(ent) or Color3.fromHSV(BColor.Hue, BColor.Sat, BColor.Value)
+                        data.stroke.Thickness = BThickness.Value
+                    end
+                end))
+            else
+                for ent in bReference do bRemoveBox(ent) end
+                if bGui then pcall(function() bGui:Destroy() end) bGui = nil end
+            end
+        end,
+        Tooltip = 'Box ESP — outline only, no text, works on Delta and all executors'
+    })
+    BTargets = BoxESP:CreateTargets({Players = true})
+    BColor = BoxESP:CreateColorSlider({Name = 'Color'})
+    BThickness = BoxESP:CreateSlider({
+        Name = 'Thickness',
+        Default = 1,
+        Min = 1,
+        Max = 4,
+        Decimal = 1,
+    })
+    BTeammates = BoxESP:CreateToggle({
+        Name = 'Priority Only',
+        Default = true,
+        Tooltip = 'Only show enemies and priority targets'
+    })
+end)
+
+run(function()
     local BulletTracers
     local Material
     local Lifetime
@@ -22118,12 +22250,8 @@ run(function()
                                             end
 
                                             task.spawn(function()
-                                                if Legit.Enabled then
-                                                    hotbarSwitch(oldhotbar)
-                                                    if oldtool then
-                                                        switchItem(oldtool)
-                                                    end
-                                                end
+                                                if oldtool then switchItem(oldtool) end
+                                                if Legit.Enabled then hotbarSwitch(oldhotbar) end
                                             end)
                                         end
                                     end
@@ -22180,12 +22308,8 @@ run(function()
                                             end
 
                                             task.spawn(function()
-                                                if Legit2.Enabled then
-                                                    hotbarSwitch(oldhotbar)
-                                                    if oldtool then
-                                                        switchItem(oldtool)
-                                                    end
-                                                end
+                                                if oldtool then switchItem(oldtool) end
+                                                if Legit2.Enabled then hotbarSwitch(oldhotbar) end
                                             end)
                                         end
                                     end
@@ -25676,4 +25800,234 @@ run(function()
         end,
         Tooltip = 'FastFlag FFlagDebugSkyGray = true (gray sky). May need a rejoin to fully apply.'
     })
+end)
+
+-- HealthDrop debug: scan workspace for the Health Drop object and log everything about it
+run(function()
+	local HealthDropDebug
+
+	local debugFile = 'levi_shakingrass/healthdrop_debug.txt'
+
+	local function dumpObject(obj, indent)
+		indent = indent or ''
+		local lines = {}
+
+		-- Basic info
+		table.insert(lines, indent .. 'NAME: ' .. tostring(obj.Name))
+		table.insert(lines, indent .. 'CLASS: ' .. obj.ClassName)
+		pcall(function()
+			table.insert(lines, indent .. 'PARENT: ' .. tostring(obj.Parent and obj.Parent.Name) .. ' (' .. tostring(obj.Parent and obj.Parent.ClassName) .. ')')
+		end)
+		pcall(function()
+			if obj:IsA('BasePart') then
+				table.insert(lines, indent .. 'POSITION: ' .. tostring(obj.Position))
+				table.insert(lines, indent .. 'SIZE: ' .. tostring(obj.Size))
+			end
+		end)
+
+		-- Attributes
+		pcall(function()
+			local attrs = obj:GetAttributes()
+			for k, v in attrs do
+				table.insert(lines, indent .. 'ATTR[' .. tostring(k) .. '] = ' .. tostring(v))
+			end
+		end)
+
+		-- Collection tags
+		pcall(function()
+			local tags = collectionService:GetTags(obj)
+			if #tags > 0 then
+				table.insert(lines, indent .. 'TAGS: ' .. table.concat(tags, ', '))
+			end
+		end)
+
+		-- ProximityPrompt info
+		pcall(function()
+			local pp = obj:FindFirstChildOfClass('ProximityPrompt')
+			if pp then
+				table.insert(lines, indent .. 'PROXPROMPT: ActionText="' .. tostring(pp.ActionText) .. '" ObjectText="' .. tostring(pp.ObjectText) .. '"')
+			end
+		end)
+
+		-- Children names (1 level deep)
+		local children = obj:GetChildren()
+		if #children > 0 then
+			local childNames = {}
+			for _, c in children do
+				table.insert(childNames, c.Name .. '(' .. c.ClassName .. ')')
+			end
+			table.insert(lines, indent .. 'CHILDREN[' .. #children .. ']: ' .. table.concat(childNames, ', '))
+		end
+
+		return table.concat(lines, '\n')
+	end
+
+	local function scanAndLog()
+		local lpos = entitylib.isAlive and entitylib.character.RootPart.Position or Vector3.zero
+		local output = '=== HealthDrop Debug — ' .. os.date('%H:%M:%S') .. ' ===\n'
+		output = output .. 'Player pos: ' .. tostring(lpos) .. '\n\n'
+
+		-- 1. All ProximityPrompts in workspace
+		output = output .. '=== ALL ProximityPrompts in workspace ===\n'
+		local ppCount = 0
+		for _, pp in workspace:GetDescendants() do
+			if pp:IsA('ProximityPrompt') then
+				ppCount += 1
+				local dist = '?'
+				pcall(function()
+					local p = pp.Parent and pp.Parent:IsA('BasePart') and pp.Parent.Position
+						or pp.Parent and pp.Parent:FindFirstChildOfClass('BasePart') and pp.Parent:FindFirstChildOfClass('BasePart').Position
+					if p then dist = string.format('%.1f', (p - lpos).Magnitude) end
+				end)
+				output = output .. '  [' .. dist .. 'studs] '
+					.. 'ActionText="' .. pp.ActionText .. '" ObjectText="' .. pp.ObjectText
+					.. '" parent=' .. tostring(pp.Parent and pp.Parent.Name)
+					.. ' (' .. tostring(pp.Parent and pp.Parent.ClassName) .. ')'
+					.. ' grandparent=' .. tostring(pp.Parent and pp.Parent.Parent and pp.Parent.Parent.Name)
+					.. '\n'
+				pcall(function()
+					for k, v in (pp.Parent or pp):GetAttributes() do
+						output = output .. '    ATTR ' .. k .. ' = ' .. tostring(v) .. '\n'
+					end
+				end)
+			end
+		end
+		if ppCount == 0 then output = output .. '  (none)\n' end
+
+		-- 2. Everything within 20 studs of player
+		output = output .. '\n=== Everything within 20 studs of player ===\n'
+		local nearCount = 0
+		local seen = {}
+		for _, obj in workspace:GetDescendants() do
+			if seen[obj] then continue end
+			local p
+			pcall(function()
+				p = obj:IsA('BasePart') and obj.Position or nil
+			end)
+			if p and (p - lpos).Magnitude <= 20 then
+				seen[obj] = true
+				nearCount += 1
+				local dist = string.format('%.1f', (p - lpos).Magnitude)
+				output = output .. '  [' .. dist .. 'studs] ' .. obj.Name .. ' (' .. obj.ClassName .. ')'
+					.. ' parent=' .. tostring(obj.Parent and obj.Parent.Name) .. '\n'
+				pcall(function()
+					for k, v in obj:GetAttributes() do
+						output = output .. '    ATTR ' .. k .. ' = ' .. tostring(v) .. '\n'
+					end
+				end)
+				pcall(function()
+					local tags = collectionService:GetTags(obj)
+					if #tags > 0 then
+						output = output .. '    TAGS: ' .. table.concat(tags, ', ') .. '\n'
+					end
+				end)
+			end
+		end
+		if nearCount == 0 then output = output .. '  (none — stand closer and try again)\n' end
+
+		-- 3. All top-level workspace children names
+		output = output .. '\n=== Workspace top-level children ===\n'
+		for _, obj in workspace:GetChildren() do
+			output = output .. '  ' .. obj.Name .. ' (' .. obj.ClassName .. ')\n'
+		end
+
+		pcall(function() writefile(debugFile, output) end)
+		pcall(function()
+			if setclipboard then setclipboard(output) end
+		end)
+		notif('HealthDrop Debug', ppCount .. ' proxprompts, ' .. nearCount .. ' nearby parts — saved' .. (setclipboard and ' + clipboard' or ''), 8, 'info')
+	end
+
+	HealthDropDebug = vape.Categories.Utility:CreateModule({
+		Name = 'HealthDrop Debug',
+		Function = function(callback)
+			if callback then
+				scanAndLog()
+				HealthDropDebug:Toggle()
+			end
+		end,
+		Tooltip = 'Scans workspace for Health Drop objects and logs name/class/attributes/children to healthdrop_debug.txt'
+	})
+end)
+
+run(function()
+	local AutoHealthDrop
+	local Threshold
+
+	local function tryPickup(item)
+		task.spawn(function()
+			if not item or not item.Parent then return end
+
+			-- Wait for PickupReadyTime (server-side cooldown on the drop)
+			local ready = item:GetAttribute('PickupReadyTime') or 0
+			local now = workspace:GetServerTimeNow()
+			if ready > now then
+				task.wait(ready - now + 0.05)
+			end
+
+			if not item.Parent or not AutoHealthDrop.Enabled then return end
+
+			-- Check health threshold
+			local char = entitylib.isAlive and entitylib.character
+			if not char then return end
+			local health = char:GetAttribute('Health') or 100
+			local maxHealth = char:GetAttribute('MaxHealth') or 100
+			if Threshold and (health / maxHealth) * 100 >= Threshold.Value then return end
+
+			local root = char:FindFirstChild('HumanoidRootPart')
+			if not root then return end
+
+			-- The server validates the character's position on pickup.
+			-- We own our own character, so briefly teleport to the item,
+			-- wait one heartbeat for the position to replicate, fire the
+			-- remote, then snap back — effectively invisible.
+			local savedCFrame = root.CFrame
+			root.CFrame = item.CFrame * CFrame.new(0, 3, 0)
+			root.AssemblyLinearVelocity = Vector3.zero
+			task.wait()  -- one physics frame for server to register new position
+
+			if item.Parent and AutoHealthDrop.Enabled then
+				pcall(function()
+					bedwars.Client:Get(remotes.PickupItem):CallServerAsync({ itemDrop = item }):andThen(function(suc)
+						if suc and bedwars.SoundList then
+							bedwars.SoundManager:playSound(bedwars.SoundList.PICKUP_ITEM_DROP)
+						end
+					end)
+				end)
+			end
+
+			-- Snap back regardless of whether pickup succeeded
+			root.CFrame = savedCFrame
+			root.AssemblyLinearVelocity = Vector3.zero
+		end)
+	end
+
+	AutoHealthDrop = vape.Categories.Utility:CreateModule({
+		Name = 'Auto Health Drop',
+		Function = function(callback)
+			if callback then
+				-- Handle drops that are already in the folder when toggled on
+				for _, item in workspace.ItemDrops:GetChildren() do
+					if item.Name == 'health_drop' then
+						tryPickup(item)
+					end
+				end
+				-- Watch for new drops appearing
+				AutoHealthDrop:Clean(workspace.ItemDrops.ChildAdded:Connect(function(item)
+					if item.Name == 'health_drop' then
+						tryPickup(item)
+					end
+				end))
+			end
+		end,
+		Tooltip = 'Automatically picks up Health Drops when your HP is below the threshold'
+	})
+	Threshold = AutoHealthDrop:CreateSlider({
+		Name = 'Pickup below',
+		Min = 1,
+		Max = 100,
+		Default = 100,
+		Suffix = '% HP',
+		Tooltip = '100 = always pick up | 50 = only when below half HP'
+	})
 end)
