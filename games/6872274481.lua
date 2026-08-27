@@ -24973,6 +24973,106 @@ run(function()
             AirHitsChance.Object.Visible = true
         end
     end)
+
+    -- ============================================================
+    -- Silent Aura — fires the attack remote with no visible swing,
+    -- no item switch. Shares FireAttackRemote / canHitTarget from
+    -- the killaura scope above.
+    -- ============================================================
+    do
+        local SilentAura
+        local SATargets
+        local SARange
+        local SADelay
+        local _saLastHit = {}  -- [character] = last hit tick
+
+        SilentAura = vape.Categories.Combat:CreateModule({
+            Name = 'Silent Aura',
+            Function = function(callback)
+                if callback then
+                    SilentAura:Clean(runService.Heartbeat:Connect(function()
+                        if not entitylib.isAlive then return end
+                        local char = entitylib.character
+                        if not char or not char.RootPart then return end
+
+                        -- Get sword without switching hotbar slot
+                        local sword = store.tools and store.tools.sword
+                        if not sword or not sword.tool then return end
+                        local meta = bedwars.ItemMeta[sword.tool.Name]
+                        if not meta or not meta.sword then return end
+
+                        local selfpos  = char.RootPart.Position
+                        local camPos   = gameCamera.CFrame.Position
+                        local range    = SARange.Value
+                        local delay    = SADelay.Value
+                        local now      = tick()
+                        local plrsOn   = SATargets.Players.Enabled
+                        local npcsOn   = SATargets.NPCs.Enabled
+
+                        for _, ent in entitylib.List do
+                            if not ent.Targetable  then continue end
+                            if not ent.RootPart    then continue end
+                            if ent.Player and not plrsOn then continue end
+                            if ent.NPC    and not npcsOn  then continue end
+
+                            local dist = (ent.RootPart.Position - selfpos).Magnitude
+                            if dist > range then continue end
+
+                            -- Per-target hit cooldown
+                            local key = ent.Character
+                            local lastHit = _saLastHit[key] or 0
+                            if (now - lastHit) < delay then continue end
+
+                            local targetPos = ent.RootPart.Position
+                            local dir = (targetPos - camPos).Unit
+
+                            local attackData = {
+                                weapon         = sword.tool,
+                                entityInstance = ent.Character,
+                                chargedAttack  = {chargeRatio = 0},
+                                validate = {
+                                    raycast = {
+                                        cameraPosition = {value = camPos},
+                                        cursorDirection = {value = dir}
+                                    },
+                                    targetPosition = {value = targetPos},
+                                    selfPosition   = {value = selfpos}
+                                }
+                            }
+
+                            if canHitTarget(ent.Character, meta) then
+                                _saLastHit[key] = now
+                                FireAttackRemote(attackData)
+                            end
+                        end
+                    end))
+                end
+            end,
+            Tooltip = 'Silently damages nearby enemies every heartbeat — no swing animation, no item switch'
+        })
+
+        SATargets = SilentAura:CreateTargets({Players = true, NPCs = false})
+
+        SARange = SilentAura:CreateSlider({
+            Name    = 'Range',
+            Min     = 1,
+            Max     = 12,
+            Decimal = 10,
+            Default = 6,
+            Suffix  = 'st',
+            Tooltip = 'Radius in studs to silently attack within'
+        })
+
+        SADelay = SilentAura:CreateSlider({
+            Name    = 'Hit Delay',
+            Min     = 0.1,
+            Max     = 2,
+            Decimal = 100,
+            Default = 0.42,
+            Suffix  = 's',
+            Tooltip = 'Minimum seconds between hits on each target (match sword attack speed)'
+        })
+    end
 end)
 
 run(function()
