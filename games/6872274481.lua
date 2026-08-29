@@ -22351,8 +22351,8 @@ run(function()
                                                     FireRates[item.itemType] = tick() + itemMeta.fireDelaySec
                                                     local shoot = itemMeta.launchSound
                                                     shoot = shoot and shoot[math.random(1, #shoot)] or nil
-                                                    if shoot then
-                                                        bedwars.SoundManager:playSound(shoot)
+                                                    if shoot and bedwars.SoundManager then
+                                                        pcall(bedwars.SoundManager.playSound, bedwars.SoundManager, shoot)
                                                     end
                                                 end
                                                 lastShot = tick() + (lplr:GetNetworkPing() + FireRate.Value)
@@ -22415,16 +22415,18 @@ run(function()
                                                     FireRates2[item.itemType] = tick() + itemMeta.fireDelaySec
                                                     local shoot = itemMeta.launchSound
                                                     shoot = shoot and shoot[math.random(1, #shoot)] or nil
-                                                    if shoot then
-                                                        bedwars.SoundManager:playSound(shoot)
+                                                    if shoot and bedwars.SoundManager then
+                                                        pcall(bedwars.SoundManager.playSound, bedwars.SoundManager, shoot)
                                                     end
                                                 end
                                                 lastShot2 = tick() + (lplr:GetNetworkPing() + FireRate2.Value)
                                             end
 
                                             task.spawn(function()
-                                                if oldtool then switchItem(oldtool) end
-                                                if Legit2.Enabled then hotbarSwitch(oldhotbar) end
+                                                task.wait(0.05)
+                                                local s = store.tools and store.tools.sword
+                                                if s and s.tool then switchItem(s.tool, 0) end
+                                                hotbarSwitch(oldhotbar)
                                             end)
                                         end
                                     end
@@ -22537,7 +22539,7 @@ run(function()
                                                     frostFireDelay = tick() + (itemMeta.projectileSource.fireDelaySec or 1)
                                                     local shoot = itemMeta.projectileSource.launchSound
                                                     shoot = shoot and shoot[math.random(1, #shoot)] or nil
-                                                    if shoot then bedwars.SoundManager:playSound(shoot) end
+                                                    if shoot and bedwars.SoundManager then pcall(bedwars.SoundManager.playSound, bedwars.SoundManager, shoot) end
                                                 end
                                                 lastFrostShot = tick() + (lplr:GetNetworkPing() + FrostFireRate.Value)
                                             end
