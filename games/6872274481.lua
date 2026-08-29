@@ -8521,6 +8521,115 @@ run(function()
 end)
 
 run(function()
+    local TeslaESP
+    local TeslaBG
+
+    local Reference = {}
+    local Folder = Instance.new('Folder')
+    Folder.Parent = vape.gui
+
+    local function Added(v)
+        task.delay(0.1, function()
+            if not v.Parent then return end
+            local placer = playersService:GetPlayerByUserId(v:GetAttribute('PlacedByUserId'))
+            if placer and placer:GetAttribute('Team') == lplr:GetAttribute('Team') then return end
+
+            local card = Instance.new('Frame')
+            card.AnchorPoint = Vector2.new(0.5, 1)
+            card.BackgroundColor3 = Color3.new()
+            card.BackgroundTransparency = TeslaBG.Enabled and 0.35 or 1
+            card.BorderSizePixel = 0
+            card.AutomaticSize = Enum.AutomaticSize.XY
+            card.Visible = false
+            local cardCorner = Instance.new('UICorner')
+            cardCorner.CornerRadius = UDim.new(0, 4)
+            cardCorner.Parent = card
+            local cardPadding = Instance.new('UIPadding')
+            cardPadding.PaddingLeft = UDim.new(0, 6)
+            cardPadding.PaddingRight = UDim.new(0, 6)
+            cardPadding.PaddingTop = UDim.new(0, 3)
+            cardPadding.PaddingBottom = UDim.new(0, 3)
+            cardPadding.Parent = card
+            local cardLayout = Instance.new('UIListLayout')
+            cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            cardLayout.FillDirection = Enum.FillDirection.Horizontal
+            cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+            cardLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+            cardLayout.Padding = UDim.new(0, 4)
+            cardLayout.Parent = card
+
+            local img = Instance.new('ImageLabel')
+            img.Name = 'Icon'
+            img.Size = UDim2.fromOffset(12, 12)
+            img.BackgroundTransparency = 1
+            img.Image = bedwars.getIcon({ itemType = 'tesla_trap' }, true)
+            img.LayoutOrder = 1
+            img.Parent = card
+
+            local info = Instance.new('TextLabel')
+            info.Name = 'Info'
+            info.AutomaticSize = Enum.AutomaticSize.XY
+            info.BackgroundTransparency = 1
+            info.Font = Enum.Font.GothamBold
+            info.TextSize = 9
+            info.TextColor3 = Color3.fromRGB(100, 160, 255)
+            info.Text = 'Tesla'
+            info.RichText = true
+            info.LayoutOrder = 2
+            info.Parent = card
+
+            card.Parent = Folder
+            Reference[v] = card
+        end)
+    end
+
+    TeslaESP = vape.Categories.Render:CreateModule({
+        Name = 'Tesla ESP',
+        Function = function(callback)
+            if callback then
+                repeat task.wait() until store.matchState ~= 0 or not TeslaESP.Enabled
+                if not TeslaESP.Enabled then return end
+
+                for _, v in collectionService:GetTagged('tesla-trap') do
+                    Added(v)
+                end
+                TeslaESP:Clean(collectionService:GetInstanceAddedSignal('tesla-trap'):Connect(Added))
+                TeslaESP:Clean(collectionService:GetInstanceRemovedSignal('tesla-trap'):Connect(function(v)
+                    if Reference[v] then
+                        Reference[v]:Destroy()
+                        Reference[v] = nil
+                    end
+                end))
+                TeslaESP:Clean(runService.PreRender:Connect(function()
+                    for obj, card in Reference do
+                        local pos, vis = gameCamera:WorldToViewportPoint(obj.Position + Vector3.new(0, 2, 0))
+                        card.Visible = vis
+                        if vis then
+                            local dist = entitylib.isAlive and math.floor((entitylib.character.RootPart.Position - obj.Position).Magnitude) or 0
+                            card.Info.Text = 'Tesla  <font color="rgb(130,130,130)">' .. dist .. 'm</font>'
+                            card.Position = UDim2.fromOffset(pos.X, pos.Y)
+                        end
+                    end
+                end))
+            else
+                table.clear(Reference)
+                Folder:ClearAllChildren()
+            end
+        end,
+        Tooltip = 'Show enemy Tesla Traps through walls'
+    })
+    TeslaBG = TeslaESP:CreateToggle({
+        Name = 'Background',
+        Function = function(callback)
+            for _, card in Reference do
+                card.BackgroundTransparency = callback and 0.35 or 1
+            end
+        end,
+        Default = true
+    })
+end)
+
+run(function()
     local PotESP
 
     local Reference = {}
