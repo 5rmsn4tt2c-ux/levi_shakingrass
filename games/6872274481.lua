@@ -22359,8 +22359,14 @@ run(function()
                                             end
 
                                             task.spawn(function()
-                                                if oldtool then switchItem(oldtool) end
-                                                if Legit.Enabled then hotbarSwitch(oldhotbar) end
+                                                task.wait(0.05)
+                                                -- Re-look up the sword fresh so we never
+                                                -- hit the Parent == nil guard in switchItem
+                                                local s = store.tools and store.tools.sword
+                                                if s and s.tool then
+                                                    switchItem(s.tool, 0)
+                                                end
+                                                hotbarSwitch(oldhotbar)
                                             end)
                                         end
                                     end
