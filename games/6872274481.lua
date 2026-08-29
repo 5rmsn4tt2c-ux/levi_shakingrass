@@ -8590,11 +8590,11 @@ run(function()
                 repeat task.wait() until store.matchState ~= 0 or not TeslaESP.Enabled
                 if not TeslaESP.Enabled then return end
 
-                for _, v in collectionService:GetTagged('tesla-trap') do
+                for _, v in collectionService:GetTagged('tesla_trap') do
                     Added(v)
                 end
-                TeslaESP:Clean(collectionService:GetInstanceAddedSignal('tesla-trap'):Connect(Added))
-                TeslaESP:Clean(collectionService:GetInstanceRemovedSignal('tesla-trap'):Connect(function(v)
+                TeslaESP:Clean(collectionService:GetInstanceAddedSignal('tesla_trap'):Connect(Added))
+                TeslaESP:Clean(collectionService:GetInstanceRemovedSignal('tesla_trap'):Connect(function(v)
                     if Reference[v] then
                         Reference[v]:Destroy()
                         Reference[v] = nil
