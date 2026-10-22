@@ -823,6 +823,19 @@ local function safeRequire(fn)
 	local ok, r = pcall(fn)
 	return ok and r or nil
 end
+-- Upvalue indexes shift when BedWars updates; try the known index, then scan for a match
+local function safeUpvalue(func, index, check)
+	if not canDebug or type(func) ~= 'function' then return nil end
+	local ok, val = pcall(debug.getupvalue, func, index)
+	if ok and val ~= nil and (not check or check(val)) then return val end
+	if not check then return nil end
+	for i = 1, 255 do
+		local ok2, v = pcall(debug.getupvalue, func, i)
+		if not ok2 then break end
+		if v ~= nil and check(v) then return v end
+	end
+	return nil
+end
 run(function()
 	local KnitInit, Knit
 	repeat
@@ -851,13 +864,13 @@ run(function()
 		AppController = safeRequire(function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out.client.controllers['app-controller']).AppController end),
 		BedBreakEffectMeta = safeRequire(function() return require(replicatedStorage.TS.locker['bed-break-effect']['bed-break-effect-meta']).BedBreakEffectMeta end),
 		BedwarsKitMeta = safeRequire(function() return require(replicatedStorage.TS.games.bedwars.kit['bedwars-kit-meta']).BedwarsKitMeta end),
-		BedwarsKitSkin = canDebug and debug.getupvalue(require(replicatedStorage.TS.games.bedwars['kit-skin']['bedwars-kit-skin-meta']).getKitSkinMetadata, 1) or {},
+		BedwarsKitSkin = safeUpvalue(safeRequire(function() return require(replicatedStorage.TS.games.bedwars['kit-skin']['bedwars-kit-skin-meta']).getKitSkinMetadata end), 1, function(v) return type(v) == 'table' end) or {},
 		BlockBreaker = Knit.Controllers.BlockBreakController.blockBreaker,
 		BlockController = safeRequire(function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['block-engine'].out).BlockEngine end),
 		BlockEngine = safeRequire(function() return require(lplr.PlayerScripts.TS.lib['block-engine']['client-block-engine']).ClientBlockEngine end),
 		BlockPlacer = safeRequire(function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['block-engine'].out.client.placement['block-placer']).BlockPlacer end),
 		BlockSelector = safeRequire(function() return require(replicatedStorage.rbxts_include.node_modules['@easy-games']['block-engine'].out.client.select['block-selector']).BlockSelector end),
-		BowConstantsTable = canDebug and debug.getupvalue(Knit.Controllers.ProjectileController.enableBeam, 8) or {RelX = 0, RelY = 0, RelZ = 0},
+		BowConstantsTable = safeUpvalue(Knit.Controllers.ProjectileController.enableBeam, 8, function(v) return type(v) == 'table' and v.RelX ~= nil end) or {RelX = 0, RelY = 0, RelZ = 0},
 		ClickHold = safeRequire(function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out.client.ui.lib.util['click-hold']).ClickHold end),
 		Client = Client,
 		ClientConstructor = safeRequire(function() return require(replicatedStorage['rbxts_include']['node_modules']['@rbxts'].net.out.client) end),
@@ -909,7 +922,7 @@ run(function()
 		SoundList = safeRequire(function() return require(replicatedStorage.TS.sound['game-sound']).GameSound end),
 		SoundManager = safeRequire(function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out).SoundManager end),
 		Store = safeRequire(function() return require(lplr.PlayerScripts.TS.ui.store).ClientStore end),
-		TeamUpgradeMeta = canDebug and debug.getupvalue(require(replicatedStorage.TS.games.bedwars['team-upgrade']['team-upgrade-meta']).getTeamUpgradeMetaForQueue, 7) or {},
+		TeamUpgradeMeta = safeUpvalue(safeRequire(function() return require(replicatedStorage.TS.games.bedwars['team-upgrade']['team-upgrade-meta']).getTeamUpgradeMetaForQueue end), 7, function(v) return type(v) == 'table' end) or {},
 		UILayers = safeRequire(function() return require(replicatedStorage['rbxts_include']['node_modules']['@easy-games']['game-core'].out).UILayers end),
 		VisualizerUtils = safeRequire(function() return require(lplr.PlayerScripts.TS.lib.visualizer['visualizer-utils']).VisualizerUtils end),
 		WeldTable = safeRequire(function() return require(replicatedStorage.TS.util['weld-util']).WeldUtil end),
@@ -1038,7 +1051,7 @@ run(function()
 		DragonFly = canDebug and Knit.Controllers.VoidDragonController.flapWings or function() end,
 		DropItem = canDebug and Knit.Controllers.ItemDropController.dropItemInHand or function() end,
 		EquipItem = canDebug and getproto(require(replicatedStorage.TS.entity.entities['inventory-entity']).InventoryEntity.equipItem, 4) or function() end,
-		FireProjectile = canDebug and debug.getupvalue(Knit.Controllers.ProjectileController.launchProjectileWithValues, 2) or function() end,
+		FireProjectile = safeUpvalue(Knit.Controllers.ProjectileController.launchProjectileWithValues, 2) or function() end,
 		GroundHit = canDebug and getproto(Knit.Controllers.FallDamageController.KnitStart, 1) or function() end,
 		GuitarHeal = canDebug and Knit.Controllers.GuitarController.performHeal or function() end,
 		HannahKill = canDebug and getproto(Knit.Controllers.HannahController.registerExecuteInteractions, 1) or function() end,
